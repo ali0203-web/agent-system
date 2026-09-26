@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__a43b356a-71f7-47f9-adde-0f883627826c__firecrawl_agent",
+      "mcp__a43b356a-71f7-47f9-adde-0f883627826c__firecrawl_agent_status",
+      "Bash(pkill -f \"tsx watch src/index.ts\")"
+    ]
+  }
+}
