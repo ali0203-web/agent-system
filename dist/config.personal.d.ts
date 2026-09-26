@@ -45,6 +45,10 @@ export declare const personalTradingConfig: {
             enabled: boolean;
             schedule: string;
         };
+        momentumTrader: {
+            enabled: boolean;
+            schedule: string;
+        };
     };
     logLevel: string;
     logFile: string;

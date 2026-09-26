@@ -12,6 +12,7 @@ import { newsMonitor } from './agents/news-monitor'
 import { technicalAnalysis } from './agents/technical-analysis'
 import { riskManagement } from './agents/risk-management'
 import { gridTradingBot } from './agents/grid-trading-bot'
+import { momentumTrader } from './agents/momentum-trader'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -67,6 +68,9 @@ export class Orchestrator extends EventEmitter {
 
     // Agent #8: Grid Trading Bot
     this.register('grid-trading-bot', gridTradingBot, '*/10 * * * *')
+
+    // Agent #9: Momentum Trader
+    this.register('momentum-trader', momentumTrader, '*/5 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }
@@ -160,6 +164,16 @@ export class Orchestrator extends EventEmitter {
     agent.on('grid-summary', (data: any) => {
       this.logger.info(`📈 [${agentId}] Grid summary:`, data)
       this.emit('grid-summary', data)
+    })
+
+    agent.on('momentum-entry', (data: any) => {
+      this.logger.info(`🚀 [${agentId}] Momentum entry:`, data)
+      this.emit('momentum-entry', data)
+    })
+
+    agent.on('momentum-exit', (data: any) => {
+      this.logger.info(`💰 [${agentId}] Momentum exit:`, data)
+      this.emit('momentum-exit', data)
     })
   }
 
