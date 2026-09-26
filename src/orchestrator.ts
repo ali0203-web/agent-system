@@ -8,6 +8,7 @@ import { BitcoinPriceMonitor } from './agents/bitcoin-price-monitor'
 import { PortfolioTracker } from './agents/portfolio-tracker'
 import { PumpDumpDetector } from './agents/pump-dump-detector'
 import { dcaBot } from './agents/dca-bot'
+import { newsMonitor } from './agents/news-monitor'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -51,6 +52,9 @@ export class Orchestrator extends EventEmitter {
 
     // Agent #4: DCA Bot
     this.register('dca-bot', dcaBot, '0 9 */7 * *')
+
+    // Agent #5: News Monitor
+    this.register('news-monitor', newsMonitor, '*/30 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }
