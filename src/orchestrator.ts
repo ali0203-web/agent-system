@@ -50,7 +50,7 @@ export class Orchestrator extends EventEmitter {
     this.register('pump-dump-detector', pumpDumpAgent, pumpDumpAgent.config.schedule || '*/5 * * * *')
 
     // Agent #4: DCA Bot
-    this.register('dca-bot', dcaBot, dcaBot.config.schedule || '0 9 */7 * *')
+    this.register('dca-bot', dcaBot, '0 9 */7 * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }

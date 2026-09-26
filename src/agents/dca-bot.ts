@@ -4,7 +4,7 @@
  * to reduce market volatility impact through dollar-cost averaging
  */
 
-import { BaseAgent } from '../base-agent'
+import { BaseAgent, AgentConfig } from '../base-agent'
 
 interface DCAPosition {
   asset: string
@@ -21,19 +21,20 @@ interface DCAPosition {
   nextScheduledPurchase: Date
 }
 
-interface DCAConfig {
-  name: string
-  description: string
+interface DCAConfig extends AgentConfig {
   positions: DCAPosition[]
 }
 
 class DCABot extends BaseAgent {
-  private positions: Map<string, DCAPosition> = new Map()
-
-  protected config: DCAConfig = {
+  config: AgentConfig = {
     name: 'dca-bot',
+    category: 'investment',
+    version: '1.0.0',
     description: 'Dollar-Cost Averaging Investment Bot',
-    positions: [
+    schedule: '0 9 */7 * *',
+  }
+
+  private positions: DCAPosition[] = [
       {
         asset: 'bitcoin',
         symbol: 'BTC',
@@ -76,8 +77,7 @@ class DCABot extends BaseAgent {
         lastPurchaseDate: new Date(),
         nextScheduledPurchase: new Date(),
       },
-    ],
-  }
+    ]
 
   async execute(): Promise<void> {
     this.logger.info('🤖 DCA Bot: Starting automated purchases...')
@@ -87,7 +87,7 @@ class DCABot extends BaseAgent {
       const prices = await this.fetchCurrentPrices()
 
       // Process each position
-      for (const position of this.config.positions) {
+      for (const position of this.positions) {
         const currentPrice = prices[position.asset]
 
         if (!currentPrice) {
@@ -139,7 +139,7 @@ class DCABot extends BaseAgent {
         totalValue: portfolioSummary.totalValue,
         gainLoss: portfolioSummary.gainLoss,
         gainLossPercent: portfolioSummary.gainLossPercent,
-        positions: this.config.positions,
+        positions: this.positions,
         timestamp: new Date(),
       })
 
@@ -173,7 +173,7 @@ class DCABot extends BaseAgent {
     let totalInvested = 0
     let totalValue = 0
 
-    for (const position of this.config.positions) {
+    for (const position of this.positions) {
       totalInvested += position.totalInvested
       totalValue += position.currentValue
     }
@@ -190,7 +190,7 @@ class DCABot extends BaseAgent {
   }
 
   getPositions(): DCAPosition[] {
-    return this.config.positions
+    return this.positions
   }
 
   addPosition(asset: string, symbol: string, investmentPerPeriod: number): void {
@@ -209,22 +209,22 @@ class DCABot extends BaseAgent {
       nextScheduledPurchase: new Date(),
     }
 
-    this.config.positions.push(position)
+    this.positions.push(position)
     this.logger.info(
       `✅ Added position: ${symbol} - $${investmentPerPeriod}/purchase`
     )
   }
 
   removePosition(symbol: string): void {
-    const index = this.config.positions.findIndex((p) => p.symbol === symbol)
+    const index = this.positions.findIndex((p) => p.symbol === symbol)
     if (index >= 0) {
-      this.config.positions.splice(index, 1)
+      this.positions.splice(index, 1)
       this.logger.info(`✅ Removed position: ${symbol}`)
     }
   }
 
   updateInvestmentAmount(symbol: string, newAmount: number): void {
-    const position = this.config.positions.find((p) => p.symbol === symbol)
+    const position = this.positions.find((p) => p.symbol === symbol)
     if (position) {
       position.investmentPerPeriod = newAmount
       this.logger.info(`✅ Updated ${symbol} investment to $${newAmount}/purchase`)
@@ -233,7 +233,4 @@ class DCABot extends BaseAgent {
 }
 
 // Export agent instance
-export const dcaBot = new DCABot({
-  name: 'dca-bot',
-  schedule: '0 9 */7 * *', // Every 7 days at 9 AM
-})
+export const dcaBot = new DCABot()
