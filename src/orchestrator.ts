@@ -7,6 +7,7 @@ import { EventEmitter } from 'events'
 import { BitcoinPriceMonitor } from './agents/bitcoin-price-monitor'
 import { PortfolioTracker } from './agents/portfolio-tracker'
 import { PumpDumpDetector } from './agents/pump-dump-detector'
+import { dcaBot } from './agents/dca-bot'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -47,6 +48,9 @@ export class Orchestrator extends EventEmitter {
     // Agent #3: Pump & Dump Detector
     const pumpDumpAgent = new PumpDumpDetector()
     this.register('pump-dump-detector', pumpDumpAgent, pumpDumpAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #4: DCA Bot
+    this.register('dca-bot', dcaBot, dcaBot.config.schedule || '0 9 */7 * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }
@@ -90,6 +94,16 @@ export class Orchestrator extends EventEmitter {
     agent.on('portfolio-alert', (data: any) => {
       this.logger.warn(`⚠️  [${agentId}] Portfolio alert:`, data)
       this.emit('portfolio-alert', data)
+    })
+
+    agent.on('dca-purchase', (data: any) => {
+      this.logger.info(`💰 [${agentId}] DCA purchase:`, data)
+      this.emit('dca-purchase', data)
+    })
+
+    agent.on('dca-portfolio-updated', (data: any) => {
+      this.logger.info(`📊 [${agentId}] DCA portfolio updated`, data)
+      this.emit('dca-portfolio-updated', data)
     })
   }
 
