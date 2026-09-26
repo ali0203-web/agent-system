@@ -58,7 +58,8 @@ export const personalTradingConfig = {
 
 // Validation
 if (!personalTradingConfig.apiKey || !personalTradingConfig.apiSecret) {
-  throw new Error('BINANCE_API_KEY and BINANCE_API_SECRET must be set in .env.local')
+  const keyType = useTestnet ? 'BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_API_SECRET' : 'BINANCE_API_KEY and BINANCE_API_SECRET'
+  throw new Error(`${keyType} must be set in .env.local`)
 }
 
 if (personalTradingConfig.capital < 10) {
