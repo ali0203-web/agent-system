@@ -11,6 +11,7 @@ import { dcaBot } from './agents/dca-bot'
 import { newsMonitor } from './agents/news-monitor'
 import { technicalAnalysis } from './agents/technical-analysis'
 import { riskManagement } from './agents/risk-management'
+import { gridTradingBot } from './agents/grid-trading-bot'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -63,6 +64,9 @@ export class Orchestrator extends EventEmitter {
 
     // Agent #7: Risk Management
     this.register('risk-management', riskManagement, '*/20 * * * *')
+
+    // Agent #8: Grid Trading Bot
+    this.register('grid-trading-bot', gridTradingBot, '*/10 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }
@@ -141,6 +145,21 @@ export class Orchestrator extends EventEmitter {
     agent.on('portfolio-risk-update', (data: any) => {
       this.logger.info(`🎯 [${agentId}] Portfolio risk update`, data)
       this.emit('portfolio-risk-update', data)
+    })
+
+    agent.on('grid-buy-order', (data: any) => {
+      this.logger.info(`📊 [${agentId}] Grid buy order:`, data)
+      this.emit('grid-buy-order', data)
+    })
+
+    agent.on('grid-sell-order', (data: any) => {
+      this.logger.info(`💰 [${agentId}] Grid sell order:`, data)
+      this.emit('grid-sell-order', data)
+    })
+
+    agent.on('grid-summary', (data: any) => {
+      this.logger.info(`📈 [${agentId}] Grid summary:`, data)
+      this.emit('grid-summary', data)
     })
   }
 

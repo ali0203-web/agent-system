@@ -13,6 +13,7 @@ const dca_bot_1 = require("./agents/dca-bot");
 const news_monitor_1 = require("./agents/news-monitor");
 const technical_analysis_1 = require("./agents/technical-analysis");
 const risk_management_1 = require("./agents/risk-management");
+const grid_trading_bot_1 = require("./agents/grid-trading-bot");
 const logger_1 = require("./logger");
 class Orchestrator extends events_1.EventEmitter {
     constructor() {
@@ -45,6 +46,8 @@ class Orchestrator extends events_1.EventEmitter {
         this.register('technical-analysis', technical_analysis_1.technicalAnalysis, '*/15 * * * *');
         // Agent #7: Risk Management
         this.register('risk-management', risk_management_1.riskManagement, '*/20 * * * *');
+        // Agent #8: Grid Trading Bot
+        this.register('grid-trading-bot', grid_trading_bot_1.gridTradingBot, '*/10 * * * *');
         this.logger.info(`✅ Registered ${this.agents.size} agents`);
     }
     /**
@@ -109,6 +112,18 @@ class Orchestrator extends events_1.EventEmitter {
         agent.on('portfolio-risk-update', (data) => {
             this.logger.info(`🎯 [${agentId}] Portfolio risk update`, data);
             this.emit('portfolio-risk-update', data);
+        });
+        agent.on('grid-buy-order', (data) => {
+            this.logger.info(`📊 [${agentId}] Grid buy order:`, data);
+            this.emit('grid-buy-order', data);
+        });
+        agent.on('grid-sell-order', (data) => {
+            this.logger.info(`💰 [${agentId}] Grid sell order:`, data);
+            this.emit('grid-sell-order', data);
+        });
+        agent.on('grid-summary', (data) => {
+            this.logger.info(`📈 [${agentId}] Grid summary:`, data);
+            this.emit('grid-summary', data);
         });
     }
     /**
