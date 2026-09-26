@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent System Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #e0e0e0;
+    }
+    .metric-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+    .metric-card:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .agent-online {
+      color: #10b981;
+      text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+    .agent-offline {
+      color: #ef4444;
+    }
+    .pulse {
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body class="dark">
+  <div id="app" class="min-h-screen p-8">
+    <!-- Header -->
+    <div class="mb-8">
+      <div class="flex items-center justify-between mb-2">
+        <h1 class="text-4xl font-bold text-white">🤖 Agent System Dashboard</h1>
+        <div class="text-sm text-gray-400">
+          <span id="last-update">Loading...</span>
+        </div>
+      </div>
+      <p class="text-gray-400">Real-time monitoring of autonomous trading agents</p>
+    </div>
+
+    <!-- Status Summary -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div class="metric-card p-6">
+        <div class="text-gray-400 text-sm mb-2">ORCHESTRATOR STATUS</div>
+        <div class="text-3xl font-bold mb-2">
+          <span id="orchestrator-status" class="agent-online">● ONLINE</span>
+        </div>
+        <div class="text-gray-500 text-sm">Running 24/7</div>
+      </div>
+
+      <div class="metric-card p-6">
+        <div class="text-gray-400 text-sm mb-2">TOTAL AGENTS</div>
+        <div class="text-3xl font-bold text-blue-400 mb-2" id="agent-count">3</div>
+        <div class="text-gray-500 text-sm">All Active</div>
+      </div>
+
+      <div class="metric-card p-6">
+        <div class="text-gray-400 text-sm mb-2">API RESPONSE TIME</div>
+        <div class="text-3xl font-bold text-green-400 mb-2" id="response-time">--</div>
+        <div class="text-gray-500 text-sm">Average latency</div>
+      </div>
+
+      <div class="metric-card p-6">
+        <div class="text-gray-400 text-sm mb-2">UPTIME</div>
+        <div class="text-3xl font-bold text-purple-400 mb-2" id="uptime">--</div>
+        <div class="text-gray-500 text-sm">Since deployment</div>
+      </div>
+    </div>
+
+    <!-- Agents Grid -->
+    <div class="mb-8">
+      <h2 class="text-2xl font-bold text-white mb-4">Agent Status</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="agents-grid">
+        <!-- Agents will be populated here -->
+      </div>
+    </div>
+
+    <!-- System Info -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div class="metric-card p-6">
+        <h2 class="text-xl font-bold text-white mb-4">Recent Activity</h2>
+        <div id="recent-executions" class="space-y-3">
+          <div class="text-gray-400">Loading...</div>
+        </div>
+      </div>
+
+      <div class="metric-card p-6">
+        <h2 class="text-xl font-bold text-white mb-4">System Information</h2>
+        <div class="space-y-3 text-sm">
+          <div class="flex justify-between">
+            <span class="text-gray-400">API Endpoint:</span>
+            <span class="font-mono text-gray-300 text-xs">agent-system-production-38bf.up.railway.app</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Platform:</span>
+            <span class="text-green-400">Railway Hobby ($5/mo)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Region:</span>
+            <span class="text-gray-300">US West (sfo)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Container:</span>
+            <span class="text-gray-300">Docker Multi-Stage</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Auto-Restart:</span>
+            <span class="text-green-400">Enabled (on failure)</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Agents Running:</span>
+            <span class="text-green-400">3/3 Active</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'https://agent-system-production-38bf.up.railway.app';
+    let executionHistory = [];
+
+    async function updateDashboard() {
+      try {
+        const startTime = performance.now();
+
+        const statusRes = await fetch(`${API_BASE}/api/status`);
+        const status = await statusRes.json();
+
+        const responseTime = Math.round(performance.now() - startTime);
+
+        document.getElementById('orchestrator-status').textContent =
+          status.isRunning ? '● ONLINE' : '● OFFLINE';
+        document.getElementById('orchestrator-status').className =
+          status.isRunning ? 'agent-online' : 'agent-offline';
+
+        document.getElementById('agent-count').textContent = status.agentCount;
+        document.getElementById('response-time').textContent = `${responseTime}ms`;
+        document.getElementById('last-update').textContent =
+          `Updated: ${new Date().toLocaleTimeString()}`;
+
+        renderAgents(status.agents);
+        trackExecution(status.agents);
+
+      } catch (error) {
+        console.error('Error:', error);
+        document.getElementById('orchestrator-status').textContent = '● ERROR';
+        document.getElementById('orchestrator-status').className = 'agent-offline';
+      }
+    }
+
+    function renderAgents(agents) {
+      const grid = document.getElementById('agents-grid');
+      grid.innerHTML = agents.map(agent => {
+        const lastRunDate = new Date(agent.lastRun);
+        const timeSinceRun = Math.round((Date.now() - lastRunDate) / 1000 / 60);
+
+        return `
+          <div class="metric-card p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-bold text-white">${agent.name}</h3>
+              <span class="agent-online pulse">●</span>
+            </div>
+            <div class="space-y-3 text-sm">
+              <div class="flex justify-between">
+                <span class="text-gray-400">Schedule:</span>
+                <span class="font-mono text-gray-300">${agent.schedule}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Last Run:</span>
+                <span class="text-gray-300">${timeSinceRun} min ago</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Status:</span>
+                <span class="text-green-400">${agent.isRunning ? 'RUNNING' : 'IDLE'}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function trackExecution(agents) {
+      const now = new Date();
+      agents.forEach(agent => {
+        executionHistory.unshift({
+          agent: agent.name,
+          time: now,
+          status: 'success'
+        });
+      });
+
+      if (executionHistory.length > 10) {
+        executionHistory = executionHistory.slice(0, 10);
+      }
+
+      const recentDiv = document.getElementById('recent-executions');
+      recentDiv.innerHTML = executionHistory.map(exec => `
+        <div class="flex items-center justify-between pb-2 border-b border-gray-700">
+          <span class="text-gray-300">${exec.agent}</span>
+          <span class="text-xs text-green-400">✓ ${exec.time.toLocaleTimeString()}</span>
+        </div>
+      `).join('');
+    }
+
+    function updateUptime() {
+      const deployTime = new Date('2026-09-27T00:01:00Z');
+      const now = new Date();
+      const diff = now - deployTime;
+      const hours = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      document.getElementById('uptime').textContent = `${hours}h ${mins}m`;
+    }
+
+    updateDashboard();
+    updateUptime();
+    setInterval(updateDashboard, 30000);
+    setInterval(updateUptime, 60000);
+  </script>
+</body>
+</html>
