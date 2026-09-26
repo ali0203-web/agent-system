@@ -43,17 +43,27 @@ const dotenv = __importStar(require("dotenv"));
 const path = __importStar(require("path"));
 // Load .env.local explicitly
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+// Determine if using testnet or mainnet
+const useTestnet = (process.env.USE_TESTNET || 'true').toLowerCase() === 'true';
 exports.personalTradingConfig = {
     // Exchange Configuration
     exchange: 'binance',
-    apiKey: process.env.BINANCE_API_KEY || '',
-    apiSecret: process.env.BINANCE_API_SECRET || '',
+    apiKey: useTestnet ? (process.env.BINANCE_TESTNET_API_KEY || '') : (process.env.BINANCE_API_KEY || ''),
+    apiSecret: useTestnet ? (process.env.BINANCE_TESTNET_API_SECRET || '') : (process.env.BINANCE_API_SECRET || ''),
+    // Binance API Configuration
+    binanceApiBaseUrl: useTestnet
+        ? 'https://testnet.binance.vision/api'
+        : 'https://api.binance.com/api',
+    binanceWsBaseUrl: useTestnet
+        ? 'wss://stream.testnet.binance.vision:9443/ws'
+        : 'wss://stream.binance.com:9443/ws',
     // Capital Management
     capital: parseInt(process.env.TRADING_CAPITAL || '50'),
     maxRiskPerTrade: parseFloat(process.env.MAX_RISK_PER_TRADE || '0.02'), // 2% max loss
     maxPositionSize: parseFloat(process.env.MAX_POSITION_SIZE || '0.1'), // 10% max position
     // Mode Configuration
     mode: 'personal',
+    isTestnet: useTestnet,
     isDryRun: false, // Set to true to test without real trades
     // Agent Configuration
     agents: {

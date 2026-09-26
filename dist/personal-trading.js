@@ -17,6 +17,7 @@ async function startPersonalTrading() {
     logger.info('═══════════════════════════════════════════');
     logger.info(`💰 Capital: $${config_personal_1.personalTradingConfig.capital}`);
     logger.info(`📊 Mode: ${config_personal_1.personalTradingConfig.mode}`);
+    logger.info(`🌐 Environment: ${config_personal_1.personalTradingConfig.isTestnet ? '🧪 TESTNET (FAKE MONEY)' : '🚀 MAINNET (REAL MONEY)'}`);
     logger.info(`⚖️  Max Risk Per Trade: ${(config_personal_1.personalTradingConfig.maxRiskPerTrade * 100).toFixed(1)}%`);
     logger.info(`📈 Max Position Size: ${(config_personal_1.personalTradingConfig.maxPositionSize * 100).toFixed(1)}%`);
     logger.info('');

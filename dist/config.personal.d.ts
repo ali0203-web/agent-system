@@ -7,10 +7,13 @@ export declare const personalTradingConfig: {
     exchange: string;
     apiKey: string;
     apiSecret: string;
+    binanceApiBaseUrl: string;
+    binanceWsBaseUrl: string;
     capital: number;
     maxRiskPerTrade: number;
     maxPositionSize: number;
     mode: "personal";
+    isTestnet: boolean;
     isDryRun: boolean;
     agents: {
         bitcoinMonitor: {
