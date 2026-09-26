@@ -16,7 +16,8 @@
     "test:agent3": "tsx src/test-agent-3.ts",
     "test:agent4": "tsx src/test-agent-4.ts",
     "test:agent5": "tsx src/test-agent-5.ts",
-    "test:all": "tsx src/test-agent.ts && tsx src/test-agent-2.ts && tsx src/test-agent-3.ts && tsx src/test-agent-4.ts && tsx src/test-agent-5.ts",
+    "test:agent6": "tsx src/test-agent-6.ts",
+    "test:all": "tsx src/test-agent.ts && tsx src/test-agent-2.ts && tsx src/test-agent-3.ts && tsx src/test-agent-4.ts && tsx src/test-agent-5.ts && tsx src/test-agent-6.ts",
     "deploy": "npm run build && git push",
     "lint": "eslint src/**/*.ts"
   },

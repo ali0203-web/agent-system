@@ -9,6 +9,7 @@ import { PortfolioTracker } from './agents/portfolio-tracker'
 import { PumpDumpDetector } from './agents/pump-dump-detector'
 import { dcaBot } from './agents/dca-bot'
 import { newsMonitor } from './agents/news-monitor'
+import { technicalAnalysis } from './agents/technical-analysis'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -55,6 +56,9 @@ export class Orchestrator extends EventEmitter {
 
     // Agent #5: News Monitor
     this.register('news-monitor', newsMonitor, '*/30 * * * *')
+
+    // Agent #6: Technical Analysis
+    this.register('technical-analysis', technicalAnalysis, '*/15 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }

@@ -9,6 +9,9 @@ const events_1 = require("events");
 const bitcoin_price_monitor_1 = require("./agents/bitcoin-price-monitor");
 const portfolio_tracker_1 = require("./agents/portfolio-tracker");
 const pump_dump_detector_1 = require("./agents/pump-dump-detector");
+const dca_bot_1 = require("./agents/dca-bot");
+const news_monitor_1 = require("./agents/news-monitor");
+const technical_analysis_1 = require("./agents/technical-analysis");
 const logger_1 = require("./logger");
 class Orchestrator extends events_1.EventEmitter {
     constructor() {
@@ -33,6 +36,12 @@ class Orchestrator extends events_1.EventEmitter {
         // Agent #3: Pump & Dump Detector
         const pumpDumpAgent = new pump_dump_detector_1.PumpDumpDetector();
         this.register('pump-dump-detector', pumpDumpAgent, pumpDumpAgent.config.schedule || '*/5 * * * *');
+        // Agent #4: DCA Bot
+        this.register('dca-bot', dca_bot_1.dcaBot, '0 9 */7 * *');
+        // Agent #5: News Monitor
+        this.register('news-monitor', news_monitor_1.newsMonitor, '*/30 * * * *');
+        // Agent #6: Technical Analysis
+        this.register('technical-analysis', technical_analysis_1.technicalAnalysis, '*/15 * * * *');
         this.logger.info(`✅ Registered ${this.agents.size} agents`);
     }
     /**
@@ -69,6 +78,14 @@ class Orchestrator extends events_1.EventEmitter {
         agent.on('portfolio-alert', (data) => {
             this.logger.warn(`⚠️  [${agentId}] Portfolio alert:`, data);
             this.emit('portfolio-alert', data);
+        });
+        agent.on('dca-purchase', (data) => {
+            this.logger.info(`💰 [${agentId}] DCA purchase:`, data);
+            this.emit('dca-purchase', data);
+        });
+        agent.on('dca-portfolio-updated', (data) => {
+            this.logger.info(`📊 [${agentId}] DCA portfolio updated`, data);
+            this.emit('dca-portfolio-updated', data);
         });
     }
     /**
