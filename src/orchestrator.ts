@@ -10,6 +10,7 @@ import { PumpDumpDetector } from './agents/pump-dump-detector'
 import { dcaBot } from './agents/dca-bot'
 import { newsMonitor } from './agents/news-monitor'
 import { technicalAnalysis } from './agents/technical-analysis'
+import { riskManagement } from './agents/risk-management'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -59,6 +60,9 @@ export class Orchestrator extends EventEmitter {
 
     // Agent #6: Technical Analysis
     this.register('technical-analysis', technicalAnalysis, '*/15 * * * *')
+
+    // Agent #7: Risk Management
+    this.register('risk-management', riskManagement, '*/20 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }
@@ -112,6 +116,31 @@ export class Orchestrator extends EventEmitter {
     agent.on('dca-portfolio-updated', (data: any) => {
       this.logger.info(`📊 [${agentId}] DCA portfolio updated`, data)
       this.emit('dca-portfolio-updated', data)
+    })
+
+    agent.on('news-alert', (data: any) => {
+      this.logger.warn(`📰 [${agentId}] News alert:`, data)
+      this.emit('news-alert', data)
+    })
+
+    agent.on('news-sentiment-shift', (data: any) => {
+      this.logger.info(`📊 [${agentId}] News sentiment shift`, data)
+      this.emit('news-sentiment-shift', data)
+    })
+
+    agent.on('technical-signal', (data: any) => {
+      this.logger.info(`📈 [${agentId}] Technical signal:`, data)
+      this.emit('technical-signal', data)
+    })
+
+    agent.on('risk-alert', (data: any) => {
+      this.logger.warn(`⚠️  [${agentId}] Risk alert:`, data)
+      this.emit('risk-alert', data)
+    })
+
+    agent.on('portfolio-risk-update', (data: any) => {
+      this.logger.info(`🎯 [${agentId}] Portfolio risk update`, data)
+      this.emit('portfolio-risk-update', data)
     })
   }
 

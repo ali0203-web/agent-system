@@ -12,6 +12,7 @@ const pump_dump_detector_1 = require("./agents/pump-dump-detector");
 const dca_bot_1 = require("./agents/dca-bot");
 const news_monitor_1 = require("./agents/news-monitor");
 const technical_analysis_1 = require("./agents/technical-analysis");
+const risk_management_1 = require("./agents/risk-management");
 const logger_1 = require("./logger");
 class Orchestrator extends events_1.EventEmitter {
     constructor() {
@@ -42,6 +43,8 @@ class Orchestrator extends events_1.EventEmitter {
         this.register('news-monitor', news_monitor_1.newsMonitor, '*/30 * * * *');
         // Agent #6: Technical Analysis
         this.register('technical-analysis', technical_analysis_1.technicalAnalysis, '*/15 * * * *');
+        // Agent #7: Risk Management
+        this.register('risk-management', risk_management_1.riskManagement, '*/20 * * * *');
         this.logger.info(`✅ Registered ${this.agents.size} agents`);
     }
     /**
@@ -86,6 +89,26 @@ class Orchestrator extends events_1.EventEmitter {
         agent.on('dca-portfolio-updated', (data) => {
             this.logger.info(`📊 [${agentId}] DCA portfolio updated`, data);
             this.emit('dca-portfolio-updated', data);
+        });
+        agent.on('news-alert', (data) => {
+            this.logger.warn(`📰 [${agentId}] News alert:`, data);
+            this.emit('news-alert', data);
+        });
+        agent.on('news-sentiment-shift', (data) => {
+            this.logger.info(`📊 [${agentId}] News sentiment shift`, data);
+            this.emit('news-sentiment-shift', data);
+        });
+        agent.on('technical-signal', (data) => {
+            this.logger.info(`📈 [${agentId}] Technical signal:`, data);
+            this.emit('technical-signal', data);
+        });
+        agent.on('risk-alert', (data) => {
+            this.logger.warn(`⚠️  [${agentId}] Risk alert:`, data);
+            this.emit('risk-alert', data);
+        });
+        agent.on('portfolio-risk-update', (data) => {
+            this.logger.info(`🎯 [${agentId}] Portfolio risk update`, data);
+            this.emit('portfolio-risk-update', data);
         });
     }
     /**
