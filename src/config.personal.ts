@@ -36,6 +36,7 @@ export const personalTradingConfig = {
     riskManagement: { enabled: true, schedule: '*/20 * * * *' },
     gridTradingBot: { enabled: true, schedule: '*/10 * * * *' },
     momentumTrader: { enabled: true, schedule: '*/5 * * * *' },
+    meanReversionBot: { enabled: true, schedule: '*/10 * * * *' },
   },
 
   // Logging

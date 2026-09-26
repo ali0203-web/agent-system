@@ -15,6 +15,7 @@ const technical_analysis_1 = require("./agents/technical-analysis");
 const risk_management_1 = require("./agents/risk-management");
 const grid_trading_bot_1 = require("./agents/grid-trading-bot");
 const momentum_trader_1 = require("./agents/momentum-trader");
+const mean_reversion_bot_1 = require("./agents/mean-reversion-bot");
 const logger_1 = require("./logger");
 class Orchestrator extends events_1.EventEmitter {
     constructor() {
@@ -51,6 +52,8 @@ class Orchestrator extends events_1.EventEmitter {
         this.register('grid-trading-bot', grid_trading_bot_1.gridTradingBot, '*/10 * * * *');
         // Agent #9: Momentum Trader
         this.register('momentum-trader', momentum_trader_1.momentumTrader, '*/5 * * * *');
+        // Agent #10: Mean Reversion Bot
+        this.register('mean-reversion-bot', mean_reversion_bot_1.meanReversionBot, '*/10 * * * *');
         this.logger.info(`✅ Registered ${this.agents.size} agents`);
     }
     /**
@@ -135,6 +138,14 @@ class Orchestrator extends events_1.EventEmitter {
         agent.on('momentum-exit', (data) => {
             this.logger.info(`💰 [${agentId}] Momentum exit:`, data);
             this.emit('momentum-exit', data);
+        });
+        agent.on('reversion-entry', (data) => {
+            this.logger.info(`🔄 [${agentId}] Reversion entry:`, data);
+            this.emit('reversion-entry', data);
+        });
+        agent.on('reversion-exit', (data) => {
+            this.logger.info(`💰 [${agentId}] Reversion exit:`, data);
+            this.emit('reversion-exit', data);
         });
     }
     /**

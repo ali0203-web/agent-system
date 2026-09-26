@@ -13,6 +13,7 @@ import { technicalAnalysis } from './agents/technical-analysis'
 import { riskManagement } from './agents/risk-management'
 import { gridTradingBot } from './agents/grid-trading-bot'
 import { momentumTrader } from './agents/momentum-trader'
+import { meanReversionBot } from './agents/mean-reversion-bot'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -71,6 +72,9 @@ export class Orchestrator extends EventEmitter {
 
     // Agent #9: Momentum Trader
     this.register('momentum-trader', momentumTrader, '*/5 * * * *')
+
+    // Agent #10: Mean Reversion Bot
+    this.register('mean-reversion-bot', meanReversionBot, '*/10 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }
@@ -174,6 +178,16 @@ export class Orchestrator extends EventEmitter {
     agent.on('momentum-exit', (data: any) => {
       this.logger.info(`💰 [${agentId}] Momentum exit:`, data)
       this.emit('momentum-exit', data)
+    })
+
+    agent.on('reversion-entry', (data: any) => {
+      this.logger.info(`🔄 [${agentId}] Reversion entry:`, data)
+      this.emit('reversion-entry', data)
+    })
+
+    agent.on('reversion-exit', (data: any) => {
+      this.logger.info(`💰 [${agentId}] Reversion exit:`, data)
+      this.emit('reversion-exit', data)
     })
   }
 

@@ -40,6 +40,7 @@ async function startPersonalTrading() {
     logger.info('  ✓ Risk Management (*/20 min)')
     logger.info('  ✓ Grid Trading Bot (*/10 min)')
     logger.info('  ✓ Momentum Trader (*/5 min)')
+    logger.info('  ✓ Mean Reversion Bot (*/10 min)')
     logger.info('')
     logger.info('Logs: personal-trading.log')
     logger.info('Dashboard: http://localhost:3000 (when running)')

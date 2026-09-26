@@ -49,6 +49,10 @@ export declare const personalTradingConfig: {
             enabled: boolean;
             schedule: string;
         };
+        meanReversionBot: {
+            enabled: boolean;
+            schedule: string;
+        };
     };
     logLevel: string;
     logFile: string;
