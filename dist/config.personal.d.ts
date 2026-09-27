@@ -56,6 +56,26 @@ export declare const personalTradingConfig: {
             enabled: boolean;
             schedule: string;
         };
+        arbitrageBot: {
+            enabled: boolean;
+            schedule: string;
+        };
+        scalpingBot: {
+            enabled: boolean;
+            schedule: string;
+        };
+        volatilityTrader: {
+            enabled: boolean;
+            schedule: string;
+        };
+        supportResistanceBot: {
+            enabled: boolean;
+            schedule: string;
+        };
+        correlationTrader: {
+            enabled: boolean;
+            schedule: string;
+        };
     };
     logLevel: string;
     logFile: string;

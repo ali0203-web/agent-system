@@ -14,6 +14,11 @@ import { riskManagement } from './agents/risk-management'
 import { gridTradingBot } from './agents/grid-trading-bot'
 import { momentumTrader } from './agents/momentum-trader'
 import { meanReversionBot } from './agents/mean-reversion-bot'
+import { arbitrageBot } from './agents/arbitrage-bot'
+import { scalpingBot } from './agents/scalping-bot'
+import { volatilityTrader } from './agents/volatility-trader'
+import { supportResistanceBot } from './agents/support-resistance-bot'
+import { correlationTrader } from './agents/correlation-trader'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -75,6 +80,21 @@ export class Orchestrator extends EventEmitter {
 
     // Agent #10: Mean Reversion Bot
     this.register('mean-reversion-bot', meanReversionBot, '*/10 * * * *')
+
+    // Agent #11: Arbitrage Bot
+    this.register('arbitrage-bot', arbitrageBot, '*/7 * * * *')
+
+    // Agent #12: Scalping Bot
+    this.register('scalping-bot', scalpingBot, '*/3 * * * *')
+
+    // Agent #13: Volatility Trader
+    this.register('volatility-trader', volatilityTrader, '*/8 * * * *')
+
+    // Agent #14: Support/Resistance Bot
+    this.register('support-resistance-bot', supportResistanceBot, '*/15 * * * *')
+
+    // Agent #15: Correlation Trader
+    this.register('correlation-trader', correlationTrader, '*/12 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }

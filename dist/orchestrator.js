@@ -16,6 +16,11 @@ const risk_management_1 = require("./agents/risk-management");
 const grid_trading_bot_1 = require("./agents/grid-trading-bot");
 const momentum_trader_1 = require("./agents/momentum-trader");
 const mean_reversion_bot_1 = require("./agents/mean-reversion-bot");
+const arbitrage_bot_1 = require("./agents/arbitrage-bot");
+const scalping_bot_1 = require("./agents/scalping-bot");
+const volatility_trader_1 = require("./agents/volatility-trader");
+const support_resistance_bot_1 = require("./agents/support-resistance-bot");
+const correlation_trader_1 = require("./agents/correlation-trader");
 const logger_1 = require("./logger");
 class Orchestrator extends events_1.EventEmitter {
     constructor() {
@@ -54,6 +59,16 @@ class Orchestrator extends events_1.EventEmitter {
         this.register('momentum-trader', momentum_trader_1.momentumTrader, '*/5 * * * *');
         // Agent #10: Mean Reversion Bot
         this.register('mean-reversion-bot', mean_reversion_bot_1.meanReversionBot, '*/10 * * * *');
+        // Agent #11: Arbitrage Bot
+        this.register('arbitrage-bot', arbitrage_bot_1.arbitrageBot, '*/7 * * * *');
+        // Agent #12: Scalping Bot
+        this.register('scalping-bot', scalping_bot_1.scalpingBot, '*/3 * * * *');
+        // Agent #13: Volatility Trader
+        this.register('volatility-trader', volatility_trader_1.volatilityTrader, '*/8 * * * *');
+        // Agent #14: Support/Resistance Bot
+        this.register('support-resistance-bot', support_resistance_bot_1.supportResistanceBot, '*/15 * * * *');
+        // Agent #15: Correlation Trader
+        this.register('correlation-trader', correlation_trader_1.correlationTrader, '*/12 * * * *');
         this.logger.info(`✅ Registered ${this.agents.size} agents`);
     }
     /**

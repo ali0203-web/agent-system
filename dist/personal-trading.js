@@ -43,6 +43,11 @@ async function startPersonalTrading() {
         logger.info('  ✓ Grid Trading Bot (*/10 min)');
         logger.info('  ✓ Momentum Trader (*/5 min)');
         logger.info('  ✓ Mean Reversion Bot (*/10 min)');
+        logger.info('  ✓ Arbitrage Bot (*/7 min)');
+        logger.info('  ✓ Scalping Bot (*/3 min)');
+        logger.info('  ✓ Volatility Trader (*/8 min)');
+        logger.info('  ✓ Support/Resistance Bot (*/15 min)');
+        logger.info('  ✓ Correlation Trader (*/12 min)');
         logger.info('');
         logger.info('Logs: personal-trading.log');
         logger.info('Dashboard: http://localhost:3000 (when running)');

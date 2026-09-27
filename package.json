@@ -24,7 +24,12 @@
     "test:agent10": "tsx src/test-agent-10.ts",
     "test:all": "tsx src/test-agent.ts && tsx src/test-agent-2.ts && tsx src/test-agent-3.ts && tsx src/test-agent-4.ts && tsx src/test-agent-5.ts && tsx src/test-agent-6.ts && tsx src/test-agent-7.ts && tsx src/test-agent-8.ts && tsx src/test-agent-9.ts && tsx src/test-agent-10.ts",
     "deploy": "npm run build && git push",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "test:agent11": "tsx src/test-agent-11.ts",
+    "test:agent12": "tsx src/test-agent-12.ts",
+    "test:agent13": "tsx src/test-agent-13.ts",
+    "test:agent14": "tsx src/test-agent-14.ts",
+    "test:agent15": "tsx src/test-agent-15.ts"
   },
   "dependencies": {
     "axios": "^1.6.0",

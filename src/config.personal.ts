@@ -49,6 +49,11 @@ export const personalTradingConfig = {
     gridTradingBot: { enabled: true, schedule: '*/10 * * * *' },
     momentumTrader: { enabled: true, schedule: '*/5 * * * *' },
     meanReversionBot: { enabled: true, schedule: '*/10 * * * *' },
+    arbitrageBot: { enabled: true, schedule: '*/7 * * * *' },
+    scalpingBot: { enabled: true, schedule: '*/3 * * * *' },
+    volatilityTrader: { enabled: true, schedule: '*/8 * * * *' },
+    supportResistanceBot: { enabled: true, schedule: '*/15 * * * *' },
+    correlationTrader: { enabled: true, schedule: '*/12 * * * *' },
   },
 
   // Logging
