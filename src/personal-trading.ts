@@ -9,6 +9,7 @@ import 'dotenv/config'
 import { orchestrator } from './orchestrator'
 import { personalTradingConfig } from './config.personal'
 import { Logger } from './logger'
+import { startDashboardServer } from './dashboard-server'
 
 const logger = new Logger('PersonalTrading')
 
@@ -24,6 +25,10 @@ async function startPersonalTrading() {
   logger.info('')
 
   try {
+    // Start dashboard server first
+    startDashboardServer(3001)
+    logger.info('')
+
     // Initialize orchestrator
     await orchestrator.start()
 

@@ -10,6 +10,7 @@ require("dotenv/config");
 const orchestrator_1 = require("./orchestrator");
 const config_personal_1 = require("./config.personal");
 const logger_1 = require("./logger");
+const dashboard_server_1 = require("./dashboard-server");
 const logger = new logger_1.Logger('PersonalTrading');
 async function startPersonalTrading() {
     logger.info('═══════════════════════════════════════════');
@@ -22,6 +23,9 @@ async function startPersonalTrading() {
     logger.info(`📈 Max Position Size: ${(config_personal_1.personalTradingConfig.maxPositionSize * 100).toFixed(1)}%`);
     logger.info('');
     try {
+        // Start dashboard server first
+        (0, dashboard_server_1.startDashboardServer)(3001);
+        logger.info('');
         // Initialize orchestrator
         await orchestrator_1.orchestrator.start();
         logger.info('═══════════════════════════════════════════');
