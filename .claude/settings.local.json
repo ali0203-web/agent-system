@@ -3,7 +3,18 @@
     "allow": [
       "mcp__a43b356a-71f7-47f9-adde-0f883627826c__firecrawl_agent",
       "mcp__a43b356a-71f7-47f9-adde-0f883627826c__firecrawl_agent_status",
-      "Bash(pkill -f \"tsx watch src/index.ts\")"
+      "Bash(pkill -f \"tsx watch src/index.ts\")",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(grep -c \"ts$\")",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(curl -s http://localhost:3000/health)",
+      "Bash(curl -s http://localhost:3000/api/status)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(npm install *)",
+      "Bash(SCRATCH_DIR=\"/Users/aliasgarfatepurwala/Library/Application Support/Claude/scratch-workspaces/7e9ea0fd-11a6-4a05-ba5d-839679710d90/0fb16682-a348-4124-9432-57ff1bf74e65/scratch-2026-09-26-f07df1\" *)",
+      "Bash(git ls-remote *)"
     ]
   }
 }

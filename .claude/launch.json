@@ -2,11 +2,11 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "Trading System (20 Agents)",
+      "name": "Trading System (30 Agents)",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
-      "autoPort": false
+      "autoPort": true
     }
   ]
 }

@@ -34,6 +34,16 @@ import { OrderFlowBot } from './agents/order-flow-bot'
 import { MarketRegimeBot } from './agents/market-regime-bot'
 import { WhaleWatchBot } from './agents/whale-watch-bot'
 import { MLPredictorBot } from './agents/ml-predictor-bot'
+import { BollingerSqueezeBot } from './agents/bollinger-squeeze-bot'
+import { KeltnerChannelBot } from './agents/keltner-channel-bot'
+import { VWAPBounceBot } from './agents/vwap-bounce-bot'
+import { SupportResistanceDynamicBot } from './agents/support-resistance-dynamic-bot'
+import { MeanReversionOscillatorBot } from './agents/mean-reversion-oscillator-bot'
+import { TrendStrengthBot } from './agents/trend-strength-bot'
+import { VolumeSurgeBot } from './agents/volume-surge-bot'
+import { CorrelationMatrixBot } from './agents/correlation-matrix-bot'
+import { PositionSizerBot } from './agents/position-sizer-bot'
+import { SignalAggregatorBot } from './agents/signal-aggregator-bot'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -170,6 +180,46 @@ export class Orchestrator extends EventEmitter {
     // Agent #30: ML Predictor Bot
     const mlAgent = new MLPredictorBot()
     this.register('ml-predictor-bot', mlAgent, mlAgent.config.schedule || '*/15 * * * *')
+
+    // Agent #31: Bollinger Bands Squeeze Bot
+    const squeezeAgent = new BollingerSqueezeBot()
+    this.register('bollinger-squeeze-bot', squeezeAgent, squeezeAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #32: Keltner Channel Bot
+    const keltnerAgent = new KeltnerChannelBot()
+    this.register('keltner-channel-bot', keltnerAgent, keltnerAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #33: VWAP Bounce Bot
+    const vwapAgent = new VWAPBounceBot()
+    this.register('vwap-bounce-bot', vwapAgent, vwapAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #34: Support/Resistance Dynamic Bot
+    const srDynamicAgent = new SupportResistanceDynamicBot()
+    this.register('support-resistance-dynamic-bot', srDynamicAgent, srDynamicAgent.config.schedule || '*/10 * * * *')
+
+    // Agent #35: Mean Reversion Oscillator Bot
+    const reversionOscAgent = new MeanReversionOscillatorBot()
+    this.register('mean-reversion-oscillator-bot', reversionOscAgent, reversionOscAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #36: Trend Strength Bot
+    const trendAgent = new TrendStrengthBot()
+    this.register('trend-strength-bot', trendAgent, trendAgent.config.schedule || '*/15 * * * *')
+
+    // Agent #37: Volume Surge Bot
+    const volumeAgent = new VolumeSurgeBot()
+    this.register('volume-surge-bot', volumeAgent, volumeAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #38: Correlation Matrix Bot
+    const corrAgent = new CorrelationMatrixBot()
+    this.register('correlation-matrix-bot', corrAgent, corrAgent.config.schedule || '*/15 * * * *')
+
+    // Agent #39: Position Sizer Bot
+    const positionAgent = new PositionSizerBot()
+    this.register('position-sizer-bot', positionAgent, positionAgent.config.schedule || '*/10 * * * *')
+
+    // Agent #40: Signal Aggregator Bot (Meta-Agent)
+    const aggregatorAgent = new SignalAggregatorBot()
+    this.register('signal-aggregator-bot', aggregatorAgent, aggregatorAgent.config.schedule || '*/15 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }

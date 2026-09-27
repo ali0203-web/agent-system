@@ -4,9 +4,9 @@
   "description": "100-Agent Orchestration System with Trading Bots",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch src/personal-trading.ts",
+    "dev:single": "tsx watch src/index.ts",
     "dev:server": "tsx watch src/server.ts",
-    "dev:personal-trading": "tsx watch src/personal-trading.ts",
     "start": "node dist/index.js",
     "start:server": "node dist/server.js",
     "start:orchestrator": "npm run build && node dist/server.js",
