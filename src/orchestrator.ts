@@ -206,8 +206,8 @@ export class Orchestrator extends EventEmitter {
     this.register('trend-strength-bot', trendAgent, trendAgent.config.schedule || '*/15 * * * *')
 
     // Agent #37: Volume Surge Bot
-    const volumeAgent = new VolumeSurgeBot()
-    this.register('volume-surge-bot', volumeAgent, volumeAgent.config.schedule || '*/5 * * * *')
+    const volumeSurgeAgent = new VolumeSurgeBot()
+    this.register('volume-surge-bot', volumeSurgeAgent, volumeSurgeAgent.config.schedule || '*/5 * * * *')
 
     // Agent #38: Correlation Matrix Bot
     const corrAgent = new CorrelationMatrixBot()
