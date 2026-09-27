@@ -8,9 +8,13 @@ const logger = new logger_1.Logger('Database');
 class Database {
     constructor() {
         this.connected = false;
-        // PostgreSQL connection
+        // PostgreSQL connection - try multiple env var names for Railway compatibility
+        const connectionString = process.env.DATABASE_URL ||
+            process.env.POSTGRES_URL ||
+            process.env.DATABASE_URL_NONPOOLING ||
+            'postgresql://localhost/agents';
         this.pgPool = new pg_1.Pool({
-            connectionString: process.env.DATABASE_URL || 'postgresql://localhost/agents',
+            connectionString,
             max: 10,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 2000,
@@ -31,6 +35,9 @@ class Database {
      */
     async connect() {
         try {
+            // Debug: Log available environment variables
+            const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || 'NOT_SET';
+            logger.info(`🔍 Connection string: ${dbUrl === 'NOT_SET' ? 'MISSING - falling back to localhost' : 'Using: ' + dbUrl.substring(0, 30) + '...'}`);
             // Test PostgreSQL connection
             const result = await this.pgPool.query('SELECT NOW()');
             logger.info('✅ PostgreSQL connected');
