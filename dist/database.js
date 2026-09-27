@@ -56,7 +56,7 @@ class Database {
      */
     async initializeTables() {
         try {
-            // Create tables if they don't exist
+            // Create agent_results table
             await this.pgPool.query(`
         CREATE TABLE IF NOT EXISTS agent_results (
           id SERIAL PRIMARY KEY,
@@ -67,11 +67,17 @@ class Database {
           error TEXT,
           executed_at TIMESTAMP NOT NULL,
           execution_time INTEGER NOT NULL,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_agent_id (agent_id),
-          INDEX idx_executed_at (executed_at)
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+            // Create indexes for agent_results
+            await this.pgPool.query(`
+        CREATE INDEX IF NOT EXISTS idx_agent_results_agent_id ON agent_results(agent_id)
+      `);
+            await this.pgPool.query(`
+        CREATE INDEX IF NOT EXISTS idx_agent_results_executed_at ON agent_results(executed_at)
+      `);
+            // Create agent_registry table
             await this.pgPool.query(`
         CREATE TABLE IF NOT EXISTS agent_registry (
           id SERIAL PRIMARY KEY,
@@ -86,16 +92,22 @@ class Database {
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+            // Create events table
             await this.pgPool.query(`
         CREATE TABLE IF NOT EXISTS events (
           id SERIAL PRIMARY KEY,
           event_name VARCHAR(255) NOT NULL,
           data JSONB NOT NULL,
           emitted_by UUID,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_event_name (event_name),
-          INDEX idx_created_at (created_at)
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+      `);
+            // Create indexes for events
+            await this.pgPool.query(`
+        CREATE INDEX IF NOT EXISTS idx_events_event_name ON events(event_name)
+      `);
+            await this.pgPool.query(`
+        CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at)
       `);
             logger.info('✅ Database tables initialized');
         }
