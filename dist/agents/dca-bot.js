@@ -7,6 +7,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.dcaBot = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class DCABot extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -119,18 +120,14 @@ class DCABot extends base_agent_1.BaseAgent {
         }
     }
     async fetchCurrentPrices() {
-        const ids = ['bitcoin', 'ethereum', 'cardano'];
-        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`;
         try {
-            const response = await this.get(url);
-            const prices = {};
-            if (response.bitcoin?.usd)
-                prices.bitcoin = response.bitcoin.usd;
-            if (response.ethereum?.usd)
-                prices.ethereum = response.ethereum.usd;
-            if (response.cardano?.usd)
-                prices.cardano = response.cardano.usd;
-            return prices;
+            const binance = (0, binance_api_1.getBinanceAPI)();
+            const binancePrices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
+            return {
+                bitcoin: binancePrices?.BTCUSDT || 0,
+                ethereum: binancePrices?.ETHUSDT || 0,
+                cardano: binancePrices?.ADAUSDT || 0,
+            };
         }
         catch (error) {
             this.logger.error('Failed to fetch prices', error);

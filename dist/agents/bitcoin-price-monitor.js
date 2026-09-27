@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BitcoinPriceMonitor = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class BitcoinPriceMonitor extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -13,8 +14,7 @@ class BitcoinPriceMonitor extends base_agent_1.BaseAgent {
             schedule: '*/5 * * * *', // Every 5 minutes
             timeout: 10000,
         };
-        this.apiUrl = 'https://api.coingecko.com/api/v3/simple/price';
-        this.currencies = ['usd', 'eur'];
+        this.currencies = ['usd'];
         this.priceThresholds = {
             significantChange: 2, // 2% change = alert
         };
@@ -52,33 +52,22 @@ class BitcoinPriceMonitor extends base_agent_1.BaseAgent {
         }
     }
     /**
-     * Fetch Bitcoin price from CoinGecko
+     * Fetch Bitcoin price from Binance
      */
     async fetchBitcoinPrice() {
         try {
-            const params = new URLSearchParams({
-                ids: 'bitcoin',
-                vs_currencies: this.currencies.join(','),
-                include_market_cap: 'true',
-                include_24hr_vol: 'true',
-                include_24hr_change: 'true',
-            });
-            const url = `${this.apiUrl}?${params.toString()}`;
-            this.logger.debug(`Fetching from: ${url}`);
-            const response = await this.get(url);
+            const binance = (0, binance_api_1.getBinanceAPI)();
+            const prices = await binance.getPrices(['BTCUSDT']);
             // Transform response to PriceData array
             const priceData = [];
-            for (const currency of this.currencies) {
-                const price = response.bitcoin[currency];
-                if (typeof price === 'number') {
-                    priceData.push({
-                        symbol: 'BTC',
-                        price,
-                        currency: currency.toUpperCase(),
-                        timestamp: new Date(),
-                        source: 'coingecko',
-                    });
-                }
+            if (prices?.BTCUSDT) {
+                priceData.push({
+                    symbol: 'BTC',
+                    price: prices.BTCUSDT,
+                    currency: 'USD',
+                    timestamp: new Date(),
+                    source: 'binance',
+                });
             }
             return priceData;
         }
@@ -163,8 +152,8 @@ class BitcoinPriceMonitor extends base_agent_1.BaseAgent {
      */
     async healthCheck() {
         try {
-            const response = await this.get('https://api.coingecko.com/api/v3/ping');
-            return response !== null;
+            const priceData = await this.fetchBitcoinPrice();
+            return priceData && priceData.length > 0;
         }
         catch (error) {
             this.logger.error('Health check failed', error);

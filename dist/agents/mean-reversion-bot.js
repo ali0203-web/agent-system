@@ -7,6 +7,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.meanReversionBot = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class MeanReversionBot extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -202,24 +203,16 @@ class MeanReversionBot extends base_agent_1.BaseAgent {
         });
     }
     async fetchCurrentPrices() {
-        const assets = ['bitcoin', 'ethereum', 'cardano', 'solana', 'ripple'];
-        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${assets.join(',')}&vs_currencies=usd`;
         try {
-            const response = await this.get(url);
-            const prices = {};
-            const symbolMap = {
-                bitcoin: 'BTC',
-                ethereum: 'ETH',
-                cardano: 'ADA',
-                solana: 'SOL',
-                ripple: 'XRP',
+            const binance = (0, binance_api_1.getBinanceAPI)();
+            const binancePrices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'XRPUSDT']);
+            return {
+                BTC: binancePrices?.BTCUSDT || 0,
+                ETH: binancePrices?.ETHUSDT || 0,
+                ADA: binancePrices?.ADAUSDT || 0,
+                SOL: binancePrices?.SOLUSDT || 0,
+                XRP: binancePrices?.XRPUSDT || 0,
             };
-            for (const [asset, symbol] of Object.entries(symbolMap)) {
-                if (response[asset]?.usd) {
-                    prices[symbol] = response[asset].usd;
-                }
-            }
-            return prices;
         }
         catch (error) {
             this.logger.error('Failed to fetch prices', error);

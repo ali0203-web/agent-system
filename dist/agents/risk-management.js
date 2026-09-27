@@ -6,6 +6,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.riskManagement = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class RiskManagement extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -229,13 +230,22 @@ class RiskManagement extends base_agent_1.BaseAgent {
         const assets = this.positions.map((p) => p.asset);
         if (assets.length === 0)
             return {};
-        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${assets.join(',')}&vs_currencies=usd`;
         try {
-            const response = await this.get(url);
+            const binance = (0, binance_api_1.getBinanceAPI)();
+            const symbolMap = {
+                bitcoin: 'BTCUSDT',
+                ethereum: 'ETHUSDT',
+                cardano: 'ADAUSDT',
+                solana: 'SOLUSDT',
+                ripple: 'XRPUSDT',
+            };
+            const binanceSymbols = assets.map((asset) => symbolMap[asset] || `${asset.toUpperCase()}USDT`);
+            const binancePrices = await binance.getPrices(binanceSymbols);
             const prices = {};
             for (const asset of assets) {
-                if (response[asset]?.usd) {
-                    const price = response[asset].usd;
+                const binanceSymbol = symbolMap[asset] || `${asset.toUpperCase()}USDT`;
+                const price = binancePrices?.[binanceSymbol];
+                if (price) {
                     prices[asset] = price;
                     // Track price history
                     const history = this.priceHistory.get(asset) || [];

@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PortfolioTracker = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class PortfolioTracker extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -13,24 +14,25 @@ class PortfolioTracker extends base_agent_1.BaseAgent {
             schedule: '*/15 * * * *', // Every 15 minutes
             timeout: 15000,
         };
-        this.apiUrl = 'https://api.coingecko.com/api/v3/simple/price';
-        this.currency = 'usd';
         // Sample holdings (in production, read from database)
         this.holdings = [
             {
-                symbol: 'bitcoin',
+                symbol: 'BTC',
+                binanceSymbol: 'BTCUSDT',
                 quantity: 0.5,
                 costBasis: 40000,
                 purchaseDate: new Date('2024-01-01'),
             },
             {
-                symbol: 'ethereum',
+                symbol: 'ETH',
+                binanceSymbol: 'ETHUSDT',
                 quantity: 5,
                 costBasis: 2000,
                 purchaseDate: new Date('2024-02-01'),
             },
             {
-                symbol: 'cardano',
+                symbol: 'ADA',
+                binanceSymbol: 'ADAUSDT',
                 quantity: 100,
                 costBasis: 0.5,
                 purchaseDate: new Date('2024-03-01'),
@@ -78,14 +80,15 @@ class PortfolioTracker extends base_agent_1.BaseAgent {
      */
     async fetchPrices() {
         try {
-            const symbols = this.holdings.map((h) => h.symbol).join(',');
-            const params = new URLSearchParams({
-                ids: symbols,
-                vs_currencies: this.currency,
-            });
-            const url = `${this.apiUrl}?${params.toString()}`;
-            this.logger.debug(`Fetching prices for: ${symbols}`);
-            return await this.get(url);
+            const binance = (0, binance_api_1.getBinanceAPI)();
+            const binanceSymbols = this.holdings.map((h) => h.binanceSymbol);
+            this.logger.debug(`Fetching prices for: ${binanceSymbols.join(', ')}`);
+            const binancePrices = await binance.getPrices(binanceSymbols);
+            const prices = {};
+            for (const holding of this.holdings) {
+                prices[holding.symbol] = binancePrices?.[holding.binanceSymbol] || 0;
+            }
+            return prices;
         }
         catch (error) {
             this.logger.error('Failed to fetch prices', error);
@@ -97,13 +100,13 @@ class PortfolioTracker extends base_agent_1.BaseAgent {
      */
     calculatePositions(prices) {
         return this.holdings.map((holding) => {
-            const price = prices[holding.symbol]?.usd || 0;
+            const price = prices[holding.symbol] || 0;
             const currentValue = holding.quantity * price;
             const totalCost = holding.quantity * holding.costBasis;
             const gain = currentValue - totalCost;
             const gainPercent = totalCost > 0 ? (gain / totalCost) * 100 : 0;
             return {
-                symbol: holding.symbol.toUpperCase(),
+                symbol: holding.symbol,
                 quantity: holding.quantity,
                 currentPrice: price,
                 currentValue,
@@ -203,9 +206,10 @@ class PortfolioTracker extends base_agent_1.BaseAgent {
     /**
      * Add a new holding
      */
-    addHolding(symbol, quantity, costBasis) {
+    addHolding(symbol, binanceSymbol, quantity, costBasis) {
         this.holdings.push({
             symbol,
+            binanceSymbol,
             quantity,
             costBasis,
             purchaseDate: new Date(),
@@ -267,8 +271,8 @@ class PortfolioTracker extends base_agent_1.BaseAgent {
      */
     async healthCheck() {
         try {
-            const response = await this.get('https://api.coingecko.com/api/v3/ping');
-            return response !== null;
+            const prices = await this.fetchPrices();
+            return Object.keys(prices).length > 0;
         }
         catch (error) {
             this.logger.error('Health check failed', error);

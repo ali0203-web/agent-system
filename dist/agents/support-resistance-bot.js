@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.supportResistanceBot = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class SupportResistanceBot extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -39,8 +40,13 @@ class SupportResistanceBot extends base_agent_1.BaseAgent {
         return { support: price * 0.95, resistance: price * 1.05 };
     }
     async fetchPrices() {
-        const response = await this.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd');
-        return { BTC: response.bitcoin?.usd || 0, ETH: response.ethereum?.usd || 0, SOL: response.solana?.usd || 0 };
+        const binance = (0, binance_api_1.getBinanceAPI)();
+        const prices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'SOLUSDT']);
+        return {
+            BTC: prices?.BTCUSDT || 0,
+            ETH: prices?.ETHUSDT || 0,
+            SOL: prices?.SOLUSDT || 0,
+        };
     }
 }
 exports.supportResistanceBot = new SupportResistanceBot();

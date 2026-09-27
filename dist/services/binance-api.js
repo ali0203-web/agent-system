@@ -161,6 +161,29 @@ class BinanceAPI {
             return null;
         }
     }
+    /**
+     * Get current prices from Binance (no auth needed, no rate limits)
+     */
+    async getPrices(symbols) {
+        try {
+            const prices = {};
+            // Fetch all prices in parallel
+            const requests = symbols.map(symbol => axios_1.default.get(`${this.baseUrl}/v3/ticker/price?symbol=${symbol}`)
+                .then(res => ({ symbol, price: parseFloat(res.data.price) }))
+                .catch(() => ({ symbol, price: null })));
+            const results = await Promise.all(requests);
+            results.forEach(({ symbol, price }) => {
+                if (price !== null) {
+                    prices[symbol] = price;
+                }
+            });
+            return Object.keys(prices).length > 0 ? prices : null;
+        }
+        catch (error) {
+            this.logger.error(`❌ Price fetch failed: ${error?.message}`);
+            return null;
+        }
+    }
 }
 exports.BinanceAPI = BinanceAPI;
 // Export singleton instance

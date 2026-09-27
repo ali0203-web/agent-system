@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PumpDumpDetector = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class PumpDumpDetector extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -13,9 +14,13 @@ class PumpDumpDetector extends base_agent_1.BaseAgent {
             schedule: '*/5 * * * *', // Every 5 minutes
             timeout: 15000,
         };
-        this.apiUrl = 'https://api.coingecko.com/api/v3';
-        // Monitoring coins
-        this.coins = ['bitcoin', 'ethereum', 'cardano', 'ripple', 'dogecoin'];
+        // Monitoring coins (map to Binance symbols)
+        this.coins = [
+            { name: 'bitcoin', symbol: 'BTCUSDT', displaySymbol: 'BTC' },
+            { name: 'ethereum', symbol: 'ETHUSDT', displaySymbol: 'ETH' },
+            { name: 'cardano', symbol: 'ADAUSDT', displaySymbol: 'ADA' },
+            { name: 'ripple', symbol: 'XRPUSDT', displaySymbol: 'XRP' },
+        ];
         // Store historical data for comparison
         this.priceHistory = new Map();
         // Detection thresholds
@@ -58,29 +63,22 @@ class PumpDumpDetector extends base_agent_1.BaseAgent {
         }
     }
     /**
-     * Fetch coin data from CoinGecko
+     * Fetch coin data from Binance
      */
     async fetchCoinData() {
         try {
-            const params = new URLSearchParams({
-                ids: this.coins.join(','),
-                vs_currencies: 'usd',
-                include_market_cap: 'true',
-                include_24hr_vol: 'true',
-                include_24hr_change: 'true',
-            });
-            const url = `${this.apiUrl}/simple/price?${params.toString()}`;
-            this.logger.debug(`Fetching coin data from: ${url}`);
-            const response = await this.get(url);
+            const binance = (0, binance_api_1.getBinanceAPI)();
+            const binanceSymbols = this.coins.map((c) => c.symbol);
+            const prices = await binance.getPrices(binanceSymbols);
             // Transform to snapshots
             const snapshots = [];
             for (const coin of this.coins) {
-                const data = response[coin];
-                if (data) {
+                const price = prices?.[coin.symbol];
+                if (price) {
                     snapshots.push({
-                        symbol: coin.toUpperCase(),
-                        price: data.usd,
-                        volume: data.usd_24h_vol || 0,
+                        symbol: coin.displaySymbol,
+                        price,
+                        volume: 0, // Binance getPrices doesn't include volume
                         timestamp: new Date(),
                     });
                 }
@@ -187,28 +185,28 @@ class PumpDumpDetector extends base_agent_1.BaseAgent {
     /**
      * Add coin to monitor
      */
-    addCoin(coin) {
-        if (!this.coins.includes(coin)) {
-            this.coins.push(coin);
-            this.priceHistory.delete(coin.toUpperCase());
-            this.logger.info(`Added coin to monitor: ${coin}`);
+    addCoin(name, symbol, displaySymbol) {
+        if (!this.coins.find((c) => c.name === name)) {
+            this.coins.push({ name, symbol, displaySymbol });
+            this.priceHistory.delete(displaySymbol);
+            this.logger.info(`Added coin to monitor: ${name}`);
         }
     }
     /**
      * Remove coin from monitor
      */
-    removeCoin(coin) {
-        const index = this.coins.indexOf(coin);
+    removeCoin(name) {
+        const index = this.coins.findIndex((c) => c.name === name);
         if (index >= 0) {
             this.coins.splice(index, 1);
-            this.logger.info(`Removed coin from monitor: ${coin}`);
+            this.logger.info(`Removed coin from monitor: ${name}`);
         }
     }
     /**
-     * Get current alerts
+     * Get current monitored coins
      */
     getMonitoredCoins() {
-        return [...this.coins];
+        return this.coins.map((c) => c.displaySymbol);
     }
     /**
      * Validate configuration
@@ -237,8 +235,8 @@ class PumpDumpDetector extends base_agent_1.BaseAgent {
      */
     async healthCheck() {
         try {
-            const response = await this.get('https://api.coingecko.com/api/v3/ping');
-            return response !== null;
+            const data = await this.fetchCoinData();
+            return data && data.length > 0;
         }
         catch (error) {
             this.logger.error('Health check failed', error);

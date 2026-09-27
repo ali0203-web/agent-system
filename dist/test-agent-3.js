@@ -49,15 +49,15 @@ async function testPumpDumpDetector() {
         console.log('📋 TEST 5: Add New Coin');
         console.log('---');
         console.log('Adding Litecoin to monitoring list...');
-        agent.addCoin('litecoin');
+        agent.addCoin('litecoin', 'LTCUSDT', 'LTC');
         const updatedCoins = agent.getMonitoredCoins();
         console.log(`Now monitoring ${updatedCoins.length} coins: ${updatedCoins.join(', ')}`);
         console.log('');
         // Test 6: Remove a Coin
         console.log('📋 TEST 6: Remove Coin');
         console.log('---');
-        console.log('Removing Dogecoin from monitoring list...');
-        agent.removeCoin('dogecoin');
+        console.log('Removing Ripple from monitoring list...');
+        agent.removeCoin('ripple');
         const finalCoins = agent.getMonitoredCoins();
         console.log(`Now monitoring ${finalCoins.length} coins: ${finalCoins.join(', ')}`);
         console.log('');

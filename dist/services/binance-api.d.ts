@@ -50,6 +50,10 @@ export declare class BinanceAPI {
      * Get order status
      */
     getOrderStatus(symbol: string, orderId: number): Promise<any | null>;
+    /**
+     * Get current prices from Binance (no auth needed, no rate limits)
+     */
+    getPrices(symbols: string[]): Promise<Record<string, number> | null>;
 }
 export declare function getBinanceAPI(): BinanceAPI;
 export {};

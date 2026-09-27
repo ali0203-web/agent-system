@@ -12,8 +12,6 @@ interface PortfolioPosition {
 }
 export declare class PortfolioTracker extends BaseAgent {
     config: AgentConfig;
-    private apiUrl;
-    private currency;
     private holdings;
     /**
      * Track portfolio value and calculate gains
@@ -50,7 +48,7 @@ export declare class PortfolioTracker extends BaseAgent {
     /**
      * Add a new holding
      */
-    addHolding(symbol: string, quantity: number, costBasis: number): void;
+    addHolding(symbol: string, binanceSymbol: string, quantity: number, costBasis: number): void;
     /**
      * Update a holding
      */

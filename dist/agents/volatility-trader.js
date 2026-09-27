@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.volatilityTrader = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class VolatilityTrader extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -38,8 +39,13 @@ class VolatilityTrader extends base_agent_1.BaseAgent {
         }
     }
     async fetchPrices() {
-        const response = await this.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,cardano&vs_currencies=usd');
-        return { BTC: response.bitcoin?.usd || 0, ETH: response.ethereum?.usd || 0, ADA: response.cardano?.usd || 0 };
+        const binance = (0, binance_api_1.getBinanceAPI)();
+        const prices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'ADAUSDT']);
+        return {
+            BTC: prices?.BTCUSDT || 0,
+            ETH: prices?.ETHUSDT || 0,
+            ADA: prices?.ADAUSDT || 0,
+        };
     }
 }
 exports.volatilityTrader = new VolatilityTrader();

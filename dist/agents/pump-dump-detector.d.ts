@@ -1,7 +1,6 @@
 import { BaseAgent, AgentConfig } from '../base-agent';
 export declare class PumpDumpDetector extends BaseAgent {
     config: AgentConfig;
-    private apiUrl;
     private coins;
     private priceHistory;
     private thresholds;
@@ -10,7 +9,7 @@ export declare class PumpDumpDetector extends BaseAgent {
      */
     execute(): Promise<any>;
     /**
-     * Fetch coin data from CoinGecko
+     * Fetch coin data from Binance
      */
     private fetchCoinData;
     /**
@@ -32,13 +31,13 @@ export declare class PumpDumpDetector extends BaseAgent {
     /**
      * Add coin to monitor
      */
-    addCoin(coin: string): void;
+    addCoin(name: string, symbol: string, displaySymbol: string): void;
     /**
      * Remove coin from monitor
      */
-    removeCoin(coin: string): void;
+    removeCoin(name: string): void;
     /**
-     * Get current alerts
+     * Get current monitored coins
      */
     getMonitoredCoins(): string[];
     /**

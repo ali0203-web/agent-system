@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.correlationTrader = void 0;
 const base_agent_1 = require("../base-agent");
+const binance_api_1 = require("../services/binance-api");
 class CorrelationTrader extends base_agent_1.BaseAgent {
     constructor() {
         super(...arguments);
@@ -36,13 +37,14 @@ class CorrelationTrader extends base_agent_1.BaseAgent {
         }
     }
     async fetchPrices() {
-        const response = await this.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,cardano,solana,ripple&vs_currencies=usd');
+        const binance = (0, binance_api_1.getBinanceAPI)();
+        const prices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'XRPUSDT']);
         return {
-            BTC: response.bitcoin?.usd || 0,
-            ETH: response.ethereum?.usd || 0,
-            ADA: response.cardano?.usd || 0,
-            SOL: response.solana?.usd || 0,
-            XRP: response.ripple?.usd || 0,
+            BTC: prices?.BTCUSDT || 0,
+            ETH: prices?.ETHUSDT || 0,
+            ADA: prices?.ADAUSDT || 0,
+            SOL: prices?.SOLUSDT || 0,
+            XRP: prices?.XRPUSDT || 0,
         };
     }
 }

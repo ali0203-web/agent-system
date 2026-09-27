@@ -1,7 +1,6 @@
 import { BaseAgent, AgentConfig } from '../base-agent';
 export declare class BitcoinPriceMonitor extends BaseAgent {
     config: AgentConfig;
-    private apiUrl;
     private currencies;
     private priceThresholds;
     private lastPrice;
@@ -10,7 +9,7 @@ export declare class BitcoinPriceMonitor extends BaseAgent {
      */
     execute(): Promise<any>;
     /**
-     * Fetch Bitcoin price from CoinGecko
+     * Fetch Bitcoin price from Binance
      */
     private fetchBitcoinPrice;
     /**

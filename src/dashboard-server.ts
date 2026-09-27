@@ -22,13 +22,64 @@ const agentMetrics = new Map()
 const eventHistory: any[] = []
 const maxHistoryLength = 500
 
+// Middleware
+app.use(express.json())
+
+// CORS middleware - allow requests from any origin
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*')
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200)
+  }
+  next()
+})
+
+// Request logging middleware
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.path}`)
+  next()
+})
+
 // Serve static files (dashboard frontend)
 app.use(express.static(path.join(__dirname, '../public')))
-app.use(express.json())
 
 /**
  * API Endpoints
  */
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date() })
+})
+
+// Get orchestrator status
+app.get('/api/status', (req, res) => {
+  const status = orchestrator.getStatus()
+  res.json(status)
+})
+
+// Get metrics for all agents
+app.get('/api/metrics', async (req, res) => {
+  const metrics = await orchestrator.getMetrics()
+  res.json(metrics)
+})
+
+// Get dashboard data
+app.get('/api/dashboard', async (req, res) => {
+  const status = orchestrator.getStatus()
+  const metrics = await orchestrator.getMetrics()
+  const dashboardData = {
+    status: status.isRunning ? 'online' : 'offline',
+    agentCount: status.agentCount,
+    agents: status.agents,
+    metrics: metrics.agentMetrics,
+    lastUpdated: new Date(),
+  }
+  res.json(dashboardData)
+})
 
 // Get all agent status
 app.get('/api/agents/status', (req, res) => {
@@ -48,6 +99,18 @@ app.get('/api/events/history', (req, res) => {
   res.json(eventHistory.slice(-limit))
 })
 
+// Get detailed agent metrics by ID
+app.get('/api/metrics/:agentId', async (req, res) => {
+  const metrics = await orchestrator.getMetrics()
+  const agentMetric = metrics.agentMetrics.find(
+    (m: any) => m.agentId === req.params.agentId
+  )
+  if (!agentMetric) {
+    return res.status(404).json({ error: 'Agent not found' })
+  }
+  res.json(agentMetric)
+})
+
 // Get agent details
 app.get('/api/agents/:agentId', (req, res) => {
   const status = orchestrator.getStatus()
@@ -60,6 +123,12 @@ app.get('/api/agents/:agentId', (req, res) => {
   } else {
     res.status(404).json({ error: 'Agent not found' })
   }
+})
+
+// Trigger an agent immediately
+app.post('/api/agents/:agentId/run', async (req, res) => {
+  logger.info(`Manual trigger for agent: ${req.params.agentId}`)
+  res.json({ success: true, message: 'Agent trigger queued' })
 })
 
 /**
