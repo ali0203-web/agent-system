@@ -21,10 +21,6 @@ interface DCAPosition {
   nextScheduledPurchase: Date
 }
 
-interface DCAConfig extends AgentConfig {
-  positions: DCAPosition[]
-}
-
 class DCABot extends BaseAgent {
   config: AgentConfig = {
     name: 'dca-bot',

@@ -35,6 +35,7 @@ declare class GridTradingBot extends BaseAgent {
     private positions;
     private priceHistory;
     private maxHistoryLength;
+    private initialized;
     execute(): Promise<void>;
     private checkGridLevels;
     private fetchCurrentPrices;
@@ -47,6 +48,7 @@ declare class GridTradingBot extends BaseAgent {
         tradesCompleted: number;
         fillRate: number;
     } | null;
+    private initializeDefaultPositions;
 }
 export declare const gridTradingBot: GridTradingBot;
 export {};

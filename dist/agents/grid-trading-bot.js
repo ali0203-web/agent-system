@@ -21,10 +21,16 @@ class GridTradingBot extends base_agent_1.BaseAgent {
         this.positions = new Map();
         this.priceHistory = new Map();
         this.maxHistoryLength = 100;
+        this.initialized = false;
     }
     async execute() {
         this.logger.info('📊 Grid Trading Bot: Checking grid positions...');
         try {
+            // Initialize default grid positions on first run
+            if (!this.initialized) {
+                await this.initializeDefaultPositions();
+                this.initialized = true;
+            }
             // Fetch current prices
             const prices = await this.fetchCurrentPrices();
             // Update all grid positions
@@ -214,6 +220,22 @@ class GridTradingBot extends base_agent_1.BaseAgent {
             tradesCompleted: filledLevels,
             fillRate,
         };
+    }
+    async initializeDefaultPositions() {
+        this.logger.info('🚀 Initializing default grid positions...');
+        // Set up default grid positions for major crypto pairs
+        // These will be automatically traded by the grid strategy
+        this.addGridPosition('bitcoin', 'BTCUSDT', 10, // 10 grid levels
+        42000, // Bottom price
+        44000, // Top price
+        50 // $50 per grid level
+        );
+        this.addGridPosition('ethereum', 'ETHUSDT', 8, // 8 grid levels
+        2200, // Bottom price
+        2400, // Top price
+        30 // $30 per grid level
+        );
+        this.logger.info('✅ Default positions initialized and ready for trading');
     }
 }
 exports.gridTradingBot = new GridTradingBot();
