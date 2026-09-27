@@ -19,6 +19,11 @@ import { scalpingBot } from './agents/scalping-bot'
 import { volatilityTrader } from './agents/volatility-trader'
 import { supportResistanceBot } from './agents/support-resistance-bot'
 import { correlationTrader } from './agents/correlation-trader'
+import { BollingerBandsBot } from './agents/bollinger-bands-bot'
+import { MACDTrader } from './agents/macd-trader'
+import { RSIBot } from './agents/rsi-bot'
+import { VolumeProfileBot } from './agents/volume-profile-bot'
+import { SentimentAnalyzer } from './agents/sentiment-analyzer'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -95,6 +100,26 @@ export class Orchestrator extends EventEmitter {
 
     // Agent #15: Correlation Trader
     this.register('correlation-trader', correlationTrader, '*/12 * * * *')
+
+    // Agent #16: Bollinger Bands Bot
+    const bollingerAgent = new BollingerBandsBot()
+    this.register('bollinger-bands-bot', bollingerAgent, bollingerAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #17: MACD Trader
+    const macdAgent = new MACDTrader()
+    this.register('macd-trader', macdAgent, macdAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #18: RSI Bot
+    const rsiAgent = new RSIBot()
+    this.register('rsi-bot', rsiAgent, rsiAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #19: Volume Profile Bot
+    const volumeAgent = new VolumeProfileBot()
+    this.register('volume-profile-bot', volumeAgent, volumeAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #20: Sentiment Analyzer
+    const sentimentAgent = new SentimentAnalyzer()
+    this.register('sentiment-analyzer', sentimentAgent, sentimentAgent.config.schedule || '*/15 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }

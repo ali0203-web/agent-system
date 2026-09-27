@@ -21,6 +21,11 @@ const scalping_bot_1 = require("./agents/scalping-bot");
 const volatility_trader_1 = require("./agents/volatility-trader");
 const support_resistance_bot_1 = require("./agents/support-resistance-bot");
 const correlation_trader_1 = require("./agents/correlation-trader");
+const bollinger_bands_bot_1 = require("./agents/bollinger-bands-bot");
+const macd_trader_1 = require("./agents/macd-trader");
+const rsi_bot_1 = require("./agents/rsi-bot");
+const volume_profile_bot_1 = require("./agents/volume-profile-bot");
+const sentiment_analyzer_1 = require("./agents/sentiment-analyzer");
 const logger_1 = require("./logger");
 class Orchestrator extends events_1.EventEmitter {
     constructor() {
@@ -69,6 +74,21 @@ class Orchestrator extends events_1.EventEmitter {
         this.register('support-resistance-bot', support_resistance_bot_1.supportResistanceBot, '*/15 * * * *');
         // Agent #15: Correlation Trader
         this.register('correlation-trader', correlation_trader_1.correlationTrader, '*/12 * * * *');
+        // Agent #16: Bollinger Bands Bot
+        const bollingerAgent = new bollinger_bands_bot_1.BollingerBandsBot();
+        this.register('bollinger-bands-bot', bollingerAgent, bollingerAgent.config.schedule || '*/5 * * * *');
+        // Agent #17: MACD Trader
+        const macdAgent = new macd_trader_1.MACDTrader();
+        this.register('macd-trader', macdAgent, macdAgent.config.schedule || '*/5 * * * *');
+        // Agent #18: RSI Bot
+        const rsiAgent = new rsi_bot_1.RSIBot();
+        this.register('rsi-bot', rsiAgent, rsiAgent.config.schedule || '*/5 * * * *');
+        // Agent #19: Volume Profile Bot
+        const volumeAgent = new volume_profile_bot_1.VolumeProfileBot();
+        this.register('volume-profile-bot', volumeAgent, volumeAgent.config.schedule || '*/5 * * * *');
+        // Agent #20: Sentiment Analyzer
+        const sentimentAgent = new sentiment_analyzer_1.SentimentAnalyzer();
+        this.register('sentiment-analyzer', sentimentAgent, sentimentAgent.config.schedule || '*/15 * * * *');
         this.logger.info(`✅ Registered ${this.agents.size} agents`);
     }
     /**
