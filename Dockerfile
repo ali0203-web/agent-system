@@ -39,6 +39,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Environment variables
 ENV NODE_ENV=production
 ENV LOG_LEVEL=info
+ENV PORT=3000
 
 # Expose port
 EXPOSE 3000
