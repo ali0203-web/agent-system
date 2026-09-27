@@ -14,7 +14,13 @@
       "Bash(git push *)",
       "Bash(npm install *)",
       "Bash(SCRATCH_DIR=\"/Users/aliasgarfatepurwala/Library/Application Support/Claude/scratch-workspaces/7e9ea0fd-11a6-4a05-ba5d-839679710d90/0fb16682-a348-4124-9432-57ff1bf74e65/scratch-2026-09-26-f07df1\" *)",
-      "Bash(git ls-remote *)"
+      "Bash(git ls-remote *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Fix: Resolve variable naming conflict in orchestrator *)",
+      "Bash(pkill -f \"tsx watch\\\\|node dist\")",
+      "Bash(kill -9 74110)",
+      "Bash(curl -s http://localhost:3000/api/agents/fleet)",
+      "Bash(curl -s http://localhost:3000/api/agents)"
     ]
   }
 }

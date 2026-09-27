@@ -46,6 +46,10 @@ app.use((req, res, next) => {
 });
 // Serve static files (dashboard frontend)
 app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
+// Serve index.html for root path
+app.get('/', (req, res) => {
+    res.sendFile(path_1.default.join(__dirname, '../public/index.html'));
+});
 /**
  * API Endpoints
  */

@@ -26,6 +26,26 @@ const macd_trader_1 = require("./agents/macd-trader");
 const rsi_bot_1 = require("./agents/rsi-bot");
 const volume_profile_bot_1 = require("./agents/volume-profile-bot");
 const sentiment_analyzer_1 = require("./agents/sentiment-analyzer");
+const ichimoku_bot_1 = require("./agents/ichimoku-bot");
+const stochastic_bot_1 = require("./agents/stochastic-bot");
+const atr_bot_1 = require("./agents/atr-bot");
+const moving_average_bot_1 = require("./agents/moving-average-bot");
+const fibonacci_bot_1 = require("./agents/fibonacci-bot");
+const pattern_recognition_bot_1 = require("./agents/pattern-recognition-bot");
+const order_flow_bot_1 = require("./agents/order-flow-bot");
+const market_regime_bot_1 = require("./agents/market-regime-bot");
+const whale_watch_bot_1 = require("./agents/whale-watch-bot");
+const ml_predictor_bot_1 = require("./agents/ml-predictor-bot");
+const bollinger_squeeze_bot_1 = require("./agents/bollinger-squeeze-bot");
+const keltner_channel_bot_1 = require("./agents/keltner-channel-bot");
+const vwap_bounce_bot_1 = require("./agents/vwap-bounce-bot");
+const support_resistance_dynamic_bot_1 = require("./agents/support-resistance-dynamic-bot");
+const mean_reversion_oscillator_bot_1 = require("./agents/mean-reversion-oscillator-bot");
+const trend_strength_bot_1 = require("./agents/trend-strength-bot");
+const volume_surge_bot_1 = require("./agents/volume-surge-bot");
+const correlation_matrix_bot_1 = require("./agents/correlation-matrix-bot");
+const position_sizer_bot_1 = require("./agents/position-sizer-bot");
+const signal_aggregator_bot_1 = require("./agents/signal-aggregator-bot");
 const logger_1 = require("./logger");
 class Orchestrator extends events_1.EventEmitter {
     constructor() {
@@ -89,6 +109,66 @@ class Orchestrator extends events_1.EventEmitter {
         // Agent #20: Sentiment Analyzer
         const sentimentAgent = new sentiment_analyzer_1.SentimentAnalyzer();
         this.register('sentiment-analyzer', sentimentAgent, sentimentAgent.config.schedule || '*/15 * * * *');
+        // Agent #21: Ichimoku Cloud Bot
+        const ichimokuAgent = new ichimoku_bot_1.IchimokuBot();
+        this.register('ichimoku-bot', ichimokuAgent, ichimokuAgent.config.schedule || '*/5 * * * *');
+        // Agent #22: Stochastic Oscillator Bot
+        const stochasticAgent = new stochastic_bot_1.StochasticBot();
+        this.register('stochastic-bot', stochasticAgent, stochasticAgent.config.schedule || '*/5 * * * *');
+        // Agent #23: ATR Bot
+        const atrAgent = new atr_bot_1.ATRBot();
+        this.register('atr-bot', atrAgent, atrAgent.config.schedule || '*/5 * * * *');
+        // Agent #24: Moving Average Bot
+        const maBot = new moving_average_bot_1.MovingAverageBot();
+        this.register('moving-average-bot', maBot, maBot.config.schedule || '*/5 * * * *');
+        // Agent #25: Fibonacci Bot
+        const fibAgent = new fibonacci_bot_1.FibonacciBot();
+        this.register('fibonacci-bot', fibAgent, fibAgent.config.schedule || '*/10 * * * *');
+        // Agent #26: Pattern Recognition Bot
+        const patternAgent = new pattern_recognition_bot_1.PatternRecognitionBot();
+        this.register('pattern-recognition-bot', patternAgent, patternAgent.config.schedule || '*/10 * * * *');
+        // Agent #27: Order Flow Bot
+        const orderFlowAgent = new order_flow_bot_1.OrderFlowBot();
+        this.register('order-flow-bot', orderFlowAgent, orderFlowAgent.config.schedule || '*/5 * * * *');
+        // Agent #28: Market Regime Bot
+        const regimeAgent = new market_regime_bot_1.MarketRegimeBot();
+        this.register('market-regime-bot', regimeAgent, regimeAgent.config.schedule || '*/15 * * * *');
+        // Agent #29: Whale Watch Bot
+        const whaleAgent = new whale_watch_bot_1.WhaleWatchBot();
+        this.register('whale-watch-bot', whaleAgent, whaleAgent.config.schedule || '*/10 * * * *');
+        // Agent #30: ML Predictor Bot
+        const mlAgent = new ml_predictor_bot_1.MLPredictorBot();
+        this.register('ml-predictor-bot', mlAgent, mlAgent.config.schedule || '*/15 * * * *');
+        // Agent #31: Bollinger Bands Squeeze Bot
+        const squeezeAgent = new bollinger_squeeze_bot_1.BollingerSqueezeBot();
+        this.register('bollinger-squeeze-bot', squeezeAgent, squeezeAgent.config.schedule || '*/5 * * * *');
+        // Agent #32: Keltner Channel Bot
+        const keltnerAgent = new keltner_channel_bot_1.KeltnerChannelBot();
+        this.register('keltner-channel-bot', keltnerAgent, keltnerAgent.config.schedule || '*/5 * * * *');
+        // Agent #33: VWAP Bounce Bot
+        const vwapAgent = new vwap_bounce_bot_1.VWAPBounceBot();
+        this.register('vwap-bounce-bot', vwapAgent, vwapAgent.config.schedule || '*/5 * * * *');
+        // Agent #34: Support/Resistance Dynamic Bot
+        const srDynamicAgent = new support_resistance_dynamic_bot_1.SupportResistanceDynamicBot();
+        this.register('support-resistance-dynamic-bot', srDynamicAgent, srDynamicAgent.config.schedule || '*/10 * * * *');
+        // Agent #35: Mean Reversion Oscillator Bot
+        const reversionOscAgent = new mean_reversion_oscillator_bot_1.MeanReversionOscillatorBot();
+        this.register('mean-reversion-oscillator-bot', reversionOscAgent, reversionOscAgent.config.schedule || '*/5 * * * *');
+        // Agent #36: Trend Strength Bot
+        const trendAgent = new trend_strength_bot_1.TrendStrengthBot();
+        this.register('trend-strength-bot', trendAgent, trendAgent.config.schedule || '*/15 * * * *');
+        // Agent #37: Volume Surge Bot
+        const volumeSurgeAgent = new volume_surge_bot_1.VolumeSurgeBot();
+        this.register('volume-surge-bot', volumeSurgeAgent, volumeSurgeAgent.config.schedule || '*/5 * * * *');
+        // Agent #38: Correlation Matrix Bot
+        const corrAgent = new correlation_matrix_bot_1.CorrelationMatrixBot();
+        this.register('correlation-matrix-bot', corrAgent, corrAgent.config.schedule || '*/15 * * * *');
+        // Agent #39: Position Sizer Bot
+        const positionAgent = new position_sizer_bot_1.PositionSizerBot();
+        this.register('position-sizer-bot', positionAgent, positionAgent.config.schedule || '*/10 * * * *');
+        // Agent #40: Signal Aggregator Bot (Meta-Agent)
+        const aggregatorAgent = new signal_aggregator_bot_1.SignalAggregatorBot();
+        this.register('signal-aggregator-bot', aggregatorAgent, aggregatorAgent.config.schedule || '*/15 * * * *');
         this.logger.info(`✅ Registered ${this.agents.size} agents`);
     }
     /**
