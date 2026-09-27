@@ -23,8 +23,8 @@ async function startPersonalTrading() {
     logger.info(`📈 Max Position Size: ${(config_personal_1.personalTradingConfig.maxPositionSize * 100).toFixed(1)}%`);
     logger.info('');
     try {
-        // Start dashboard server first
-        (0, dashboard_server_1.startDashboardServer)(3001);
+        // Start dashboard server on exposed port
+        (0, dashboard_server_1.startDashboardServer)(3000);
         logger.info('');
         // Initialize orchestrator
         await orchestrator_1.orchestrator.start();

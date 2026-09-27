@@ -44,5 +44,5 @@ ENV PORT=3000
 # Expose port
 EXPOSE 3000
 
-# Run the application
-CMD ["node", "dist/server.js"]
+# Run the application with personal trading configuration
+CMD ["node", "dist/personal-trading.js"]

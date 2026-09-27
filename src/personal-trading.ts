@@ -25,8 +25,8 @@ async function startPersonalTrading() {
   logger.info('')
 
   try {
-    // Start dashboard server first
-    startDashboardServer(3001)
+    // Start dashboard server on exposed port
+    startDashboardServer(3000)
     logger.info('')
 
     // Initialize orchestrator
