@@ -24,6 +24,16 @@ import { MACDTrader } from './agents/macd-trader'
 import { RSIBot } from './agents/rsi-bot'
 import { VolumeProfileBot } from './agents/volume-profile-bot'
 import { SentimentAnalyzer } from './agents/sentiment-analyzer'
+import { IchimokuBot } from './agents/ichimoku-bot'
+import { StochasticBot } from './agents/stochastic-bot'
+import { ATRBot } from './agents/atr-bot'
+import { MovingAverageBot } from './agents/moving-average-bot'
+import { FibonacciBot } from './agents/fibonacci-bot'
+import { PatternRecognitionBot } from './agents/pattern-recognition-bot'
+import { OrderFlowBot } from './agents/order-flow-bot'
+import { MarketRegimeBot } from './agents/market-regime-bot'
+import { WhaleWatchBot } from './agents/whale-watch-bot'
+import { MLPredictorBot } from './agents/ml-predictor-bot'
 import { Logger } from './logger'
 
 interface AgentRegistry {
@@ -120,6 +130,46 @@ export class Orchestrator extends EventEmitter {
     // Agent #20: Sentiment Analyzer
     const sentimentAgent = new SentimentAnalyzer()
     this.register('sentiment-analyzer', sentimentAgent, sentimentAgent.config.schedule || '*/15 * * * *')
+
+    // Agent #21: Ichimoku Cloud Bot
+    const ichimokuAgent = new IchimokuBot()
+    this.register('ichimoku-bot', ichimokuAgent, ichimokuAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #22: Stochastic Oscillator Bot
+    const stochasticAgent = new StochasticBot()
+    this.register('stochastic-bot', stochasticAgent, stochasticAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #23: ATR Bot
+    const atrAgent = new ATRBot()
+    this.register('atr-bot', atrAgent, atrAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #24: Moving Average Bot
+    const maBot = new MovingAverageBot()
+    this.register('moving-average-bot', maBot, maBot.config.schedule || '*/5 * * * *')
+
+    // Agent #25: Fibonacci Bot
+    const fibAgent = new FibonacciBot()
+    this.register('fibonacci-bot', fibAgent, fibAgent.config.schedule || '*/10 * * * *')
+
+    // Agent #26: Pattern Recognition Bot
+    const patternAgent = new PatternRecognitionBot()
+    this.register('pattern-recognition-bot', patternAgent, patternAgent.config.schedule || '*/10 * * * *')
+
+    // Agent #27: Order Flow Bot
+    const orderFlowAgent = new OrderFlowBot()
+    this.register('order-flow-bot', orderFlowAgent, orderFlowAgent.config.schedule || '*/5 * * * *')
+
+    // Agent #28: Market Regime Bot
+    const regimeAgent = new MarketRegimeBot()
+    this.register('market-regime-bot', regimeAgent, regimeAgent.config.schedule || '*/15 * * * *')
+
+    // Agent #29: Whale Watch Bot
+    const whaleAgent = new WhaleWatchBot()
+    this.register('whale-watch-bot', whaleAgent, whaleAgent.config.schedule || '*/10 * * * *')
+
+    // Agent #30: ML Predictor Bot
+    const mlAgent = new MLPredictorBot()
+    this.register('ml-predictor-bot', mlAgent, mlAgent.config.schedule || '*/15 * * * *')
 
     this.logger.info(`✅ Registered ${this.agents.size} agents`)
   }
