@@ -5,6 +5,7 @@
  */
 
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { getBinanceAPI } from '../services/binance-api'
 
 interface GridLevel {
   level: number
@@ -84,6 +85,7 @@ class GridTradingBot extends BaseAgent {
   }
 
   private async checkGridLevels(position: GridPosition, currentPrice: number): Promise<void> {
+    const binance = getBinanceAPI()
     let filledCount = 0
     let executedTrades = 0
 
@@ -94,51 +96,80 @@ class GridTradingBot extends BaseAgent {
         currentPrice <= level.price &&
         currentPrice >= level.price * 0.98 // Within 2% of grid level
       ) {
-        level.status = 'filled'
-        level.buyFilledAt = new Date()
-        filledCount++
-
-        this.logger.info(
-          `✅ GRID BUY Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)}`
-        )
-
-        this.emit('grid-buy-order', {
+        // Place real Binance order
+        const orderResult = await binance.placeOrder({
           symbol: position.symbol,
-          level: level.level,
+          side: 'BUY',
+          quantity: position.investmentPerGrid / currentPrice,
           price: currentPrice,
-          amount: position.investmentPerGrid,
-          timestamp: new Date(),
+          orderType: 'LIMIT',
         })
+
+        if (orderResult) {
+          level.status = 'filled'
+          level.buyOrderId = orderResult.orderId.toString()
+          level.buyFilledAt = new Date()
+          filledCount++
+
+          this.logger.info(
+            `✅ GRID BUY Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Order ID: ${orderResult.orderId}`
+          )
+
+          this.emit('grid-buy-order', {
+            symbol: position.symbol,
+            level: level.level,
+            price: currentPrice,
+            amount: position.investmentPerGrid,
+            orderId: orderResult.orderId,
+            timestamp: new Date(),
+          })
+        } else {
+          this.logger.error(`❌ Failed to place buy order for ${position.symbol}`)
+        }
       }
 
       // Check if we should sell (price bounced up)
       if (level.status === 'filled' && !level.soldAt && currentPrice >= level.price * 1.02) {
-        // 2% profit target
-        level.soldAt = new Date()
-        level.profit = position.investmentPerGrid * 0.02 // 2% profit
-        level.profitPercent = 2
-
-        position.totalProfit += level.profit
-        executedTrades++
-
-        this.logger.info(
-          `💰 GRID SELL Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Profit: $${level.profit.toFixed(2)}`
-        )
-
-        this.emit('grid-sell-order', {
+        // 2% profit target - place real Binance order
+        const sellOrderResult = await binance.placeOrder({
           symbol: position.symbol,
-          level: level.level,
-          buyPrice: level.price,
-          sellPrice: currentPrice,
-          profit: level.profit,
-          profitPercent: level.profitPercent,
-          timestamp: new Date(),
+          side: 'SELL',
+          quantity: position.investmentPerGrid / level.price,
+          price: currentPrice,
+          orderType: 'LIMIT',
         })
 
-        // Reset level for next cycle
-        level.status = 'pending'
-        level.buyFilledAt = undefined
-        level.soldAt = undefined
+        if (sellOrderResult) {
+          level.soldAt = new Date()
+          level.sellOrderId = sellOrderResult.orderId.toString()
+          level.profit = (currentPrice - level.price) * (position.investmentPerGrid / level.price)
+          level.profitPercent = ((currentPrice - level.price) / level.price) * 100
+
+          position.totalProfit += level.profit
+          executedTrades++
+
+          this.logger.info(
+            `💰 GRID SELL Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Profit: $${level.profit.toFixed(2)} | Order ID: ${sellOrderResult.orderId}`
+          )
+
+          this.emit('grid-sell-order', {
+            symbol: position.symbol,
+            level: level.level,
+            buyPrice: level.price,
+            sellPrice: currentPrice,
+            profit: level.profit,
+            profitPercent: level.profitPercent,
+            orderId: sellOrderResult.orderId,
+            timestamp: new Date(),
+          })
+
+          // Reset level for next cycle
+          level.status = 'pending'
+          level.buyFilledAt = undefined
+          level.soldAt = undefined
+        } else {
+          this.logger.error(`❌ Failed to place sell order for ${position.symbol}`)
+        }
       }
     }
 
