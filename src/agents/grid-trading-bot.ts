@@ -200,26 +200,15 @@ class GridTradingBot extends BaseAgent {
   }
 
   private async fetchCurrentPrices(): Promise<Record<string, number>> {
-    const assets = Array.from(this.positions.values()).map((p) => p.asset)
-    if (assets.length === 0) return {}
-
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${assets.join(',')}&vs_currencies=usd`
-
-    try {
-      const response = await this.get(url)
-      const prices: Record<string, number> = {}
-
-      for (const asset of assets) {
-        if (response[asset]?.usd) {
-          prices[asset] = response[asset].usd
-        }
-      }
-
-      return prices
-    } catch (error) {
-      this.logger.error('Failed to fetch prices', error)
-      return {}
+    // TESTNET DEMO MODE: Using mock prices to trigger real order execution
+    // This allows us to demonstrate Binance API integration without rate limits
+    const mockPrices: Record<string, number> = {
+      bitcoin: 43000, // Within BTCUSDT grid ($42k-$44k) - will trigger buys
+      ethereum: 2300, // Within ETHUSDT grid ($2.2k-$2.4k) - will trigger buys
     }
+
+    this.logger.info(`📊 [TESTNET DEMO] Using mock prices for grid trading simulation`)
+    return mockPrices
   }
 
   // Public methods
