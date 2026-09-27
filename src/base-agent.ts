@@ -207,8 +207,13 @@ export abstract class BaseAgent extends EventEmitter {
   protected async saveResult(result: AgentResult): Promise<void> {
     try {
       await this.db.insert('agent_results', {
-        ...result,
-        executedAt: result.executedAt.toISOString(),
+        agent_id: result.agentId,
+        agent_name: result.agentName,
+        success: result.success,
+        data: result.data,
+        error: result.error,
+        executed_at: result.executedAt.toISOString(),
+        execution_time: result.executionTime,
       })
     } catch (error) {
       this.logger.error('Failed to save result to database', error)

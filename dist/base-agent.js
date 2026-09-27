@@ -156,8 +156,13 @@ class BaseAgent extends events_1.EventEmitter {
     async saveResult(result) {
         try {
             await this.db.insert('agent_results', {
-                ...result,
-                executedAt: result.executedAt.toISOString(),
+                agent_id: result.agentId,
+                agent_name: result.agentName,
+                success: result.success,
+                data: result.data,
+                error: result.error,
+                executed_at: result.executedAt.toISOString(),
+                execution_time: result.executionTime,
             });
         }
         catch (error) {
