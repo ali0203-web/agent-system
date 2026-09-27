@@ -1,13 +1,5 @@
 import { BaseAgent, AgentConfig } from '../base-agent'
-
-interface CoinGeckoResponse {
-  bitcoin: {
-    usd: number
-    eur?: number
-    gbp?: number
-    jpy?: number
-  }
-}
+import { getBinanceAPI } from '../services/binance-api'
 
 interface PriceData {
   symbol: string
@@ -28,8 +20,7 @@ export class BitcoinPriceMonitor extends BaseAgent {
     timeout: 10000,
   }
 
-  private apiUrl = 'https://api.coingecko.com/api/v3/simple/price'
-  private currencies = ['usd', 'eur']
+  private currencies = ['usd']
   private priceThresholds = {
     significantChange: 2, // 2% change = alert
   }
@@ -74,37 +65,24 @@ export class BitcoinPriceMonitor extends BaseAgent {
   }
 
   /**
-   * Fetch Bitcoin price from CoinGecko
+   * Fetch Bitcoin price from Binance
    */
   private async fetchBitcoinPrice(): Promise<PriceData[]> {
     try {
-      const params = new URLSearchParams({
-        ids: 'bitcoin',
-        vs_currencies: this.currencies.join(','),
-        include_market_cap: 'true',
-        include_24hr_vol: 'true',
-        include_24hr_change: 'true',
-      })
-
-      const url = `${this.apiUrl}?${params.toString()}`
-      this.logger.debug(`Fetching from: ${url}`)
-
-      const response = await this.get<CoinGeckoResponse>(url)
+      const binance = getBinanceAPI()
+      const prices = await binance.getPrices(['BTCUSDT'])
 
       // Transform response to PriceData array
       const priceData: PriceData[] = []
 
-      for (const currency of this.currencies) {
-        const price = response.bitcoin[currency as keyof typeof response.bitcoin]
-        if (typeof price === 'number') {
-          priceData.push({
-            symbol: 'BTC',
-            price,
-            currency: currency.toUpperCase(),
-            timestamp: new Date(),
-            source: 'coingecko',
-          })
-        }
+      if (prices?.BTCUSDT) {
+        priceData.push({
+          symbol: 'BTC',
+          price: prices.BTCUSDT,
+          currency: 'USD',
+          timestamp: new Date(),
+          source: 'binance',
+        })
       }
 
       return priceData
@@ -200,8 +178,8 @@ export class BitcoinPriceMonitor extends BaseAgent {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await this.get('https://api.coingecko.com/api/v3/ping')
-      return response !== null
+      const priceData = await this.fetchBitcoinPrice()
+      return priceData && priceData.length > 0
     } catch (error) {
       this.logger.error('Health check failed', error)
       return false

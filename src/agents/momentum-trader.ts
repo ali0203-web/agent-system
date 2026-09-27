@@ -5,6 +5,7 @@
  */
 
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { getBinanceAPI } from '../services/binance-api'
 
 interface MomentumSignal {
   symbol: string
@@ -264,28 +265,17 @@ class MomentumTrader extends BaseAgent {
   }
 
   private async fetchCurrentPrices(): Promise<Record<string, number>> {
-    const assets = ['bitcoin', 'ethereum', 'cardano', 'solana', 'ripple']
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${assets.join(',')}&vs_currencies=usd`
-
     try {
-      const response = await this.get(url)
-      const prices: Record<string, number> = {}
+      const binance = getBinanceAPI()
+      const binancePrices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'XRPUSDT'])
 
-      const symbolMap: Record<string, string> = {
-        bitcoin: 'BTC',
-        ethereum: 'ETH',
-        cardano: 'ADA',
-        solana: 'SOL',
-        ripple: 'XRP',
+      return {
+        BTC: binancePrices?.BTCUSDT || 0,
+        ETH: binancePrices?.ETHUSDT || 0,
+        ADA: binancePrices?.ADAUSDT || 0,
+        SOL: binancePrices?.SOLUSDT || 0,
+        XRP: binancePrices?.XRPUSDT || 0,
       }
-
-      for (const [asset, symbol] of Object.entries(symbolMap)) {
-        if (response[asset]?.usd) {
-          prices[symbol] = response[asset].usd
-        }
-      }
-
-      return prices
     } catch (error) {
       this.logger.error('Failed to fetch prices', error)
       return {}

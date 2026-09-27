@@ -1,4 +1,5 @@
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { getBinanceAPI } from '../services/binance-api'
 
 interface PriceSnapshot {
   symbol: string
@@ -28,10 +29,13 @@ export class PumpDumpDetector extends BaseAgent {
     timeout: 15000,
   }
 
-  private apiUrl = 'https://api.coingecko.com/api/v3'
-
-  // Monitoring coins
-  private coins = ['bitcoin', 'ethereum', 'cardano', 'ripple', 'dogecoin']
+  // Monitoring coins (map to Binance symbols)
+  private coins = [
+    { name: 'bitcoin', symbol: 'BTCUSDT', displaySymbol: 'BTC' },
+    { name: 'ethereum', symbol: 'ETHUSDT', displaySymbol: 'ETH' },
+    { name: 'cardano', symbol: 'ADAUSDT', displaySymbol: 'ADA' },
+    { name: 'ripple', symbol: 'XRPUSDT', displaySymbol: 'XRP' },
+  ]
 
   // Store historical data for comparison
   private priceHistory: Map<string, PriceSnapshot[]> = new Map()
@@ -82,32 +86,23 @@ export class PumpDumpDetector extends BaseAgent {
   }
 
   /**
-   * Fetch coin data from CoinGecko
+   * Fetch coin data from Binance
    */
   private async fetchCoinData(): Promise<PriceSnapshot[]> {
     try {
-      const params = new URLSearchParams({
-        ids: this.coins.join(','),
-        vs_currencies: 'usd',
-        include_market_cap: 'true',
-        include_24hr_vol: 'true',
-        include_24hr_change: 'true',
-      })
-
-      const url = `${this.apiUrl}/simple/price?${params.toString()}`
-      this.logger.debug(`Fetching coin data from: ${url}`)
-
-      const response = await this.get<any>(url)
+      const binance = getBinanceAPI()
+      const binanceSymbols = this.coins.map((c) => c.symbol)
+      const prices = await binance.getPrices(binanceSymbols)
 
       // Transform to snapshots
       const snapshots: PriceSnapshot[] = []
       for (const coin of this.coins) {
-        const data = response[coin]
-        if (data) {
+        const price = prices?.[coin.symbol]
+        if (price) {
           snapshots.push({
-            symbol: coin.toUpperCase(),
-            price: data.usd,
-            volume: data.usd_24h_vol || 0,
+            symbol: coin.displaySymbol,
+            price,
+            volume: 0, // Binance getPrices doesn't include volume
             timestamp: new Date(),
           })
         }
@@ -237,30 +232,30 @@ export class PumpDumpDetector extends BaseAgent {
   /**
    * Add coin to monitor
    */
-  addCoin(coin: string): void {
-    if (!this.coins.includes(coin)) {
-      this.coins.push(coin)
-      this.priceHistory.delete(coin.toUpperCase())
-      this.logger.info(`Added coin to monitor: ${coin}`)
+  addCoin(name: string, symbol: string, displaySymbol: string): void {
+    if (!this.coins.find((c) => c.name === name)) {
+      this.coins.push({ name, symbol, displaySymbol })
+      this.priceHistory.delete(displaySymbol)
+      this.logger.info(`Added coin to monitor: ${name}`)
     }
   }
 
   /**
    * Remove coin from monitor
    */
-  removeCoin(coin: string): void {
-    const index = this.coins.indexOf(coin)
+  removeCoin(name: string): void {
+    const index = this.coins.findIndex((c) => c.name === name)
     if (index >= 0) {
       this.coins.splice(index, 1)
-      this.logger.info(`Removed coin from monitor: ${coin}`)
+      this.logger.info(`Removed coin from monitor: ${name}`)
     }
   }
 
   /**
-   * Get current alerts
+   * Get current monitored coins
    */
   getMonitoredCoins(): string[] {
-    return [...this.coins]
+    return this.coins.map((c) => c.displaySymbol)
   }
 
   /**
@@ -294,8 +289,8 @@ export class PumpDumpDetector extends BaseAgent {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await this.get('https://api.coingecko.com/api/v3/ping')
-      return response !== null
+      const data = await this.fetchCoinData()
+      return data && data.length > 0
     } catch (error) {
       this.logger.error('Health check failed', error)
       return false

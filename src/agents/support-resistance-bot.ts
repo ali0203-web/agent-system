@@ -1,4 +1,5 @@
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { getBinanceAPI } from '../services/binance-api'
 
 class SupportResistanceBot extends BaseAgent {
   config: AgentConfig = {
@@ -37,10 +38,13 @@ class SupportResistanceBot extends BaseAgent {
   }
 
   async fetchPrices(): Promise<Record<string, number>> {
-    const response = await this.get(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd'
-    )
-    return { BTC: response.bitcoin?.usd || 0, ETH: response.ethereum?.usd || 0, SOL: response.solana?.usd || 0 }
+    const binance = getBinanceAPI()
+    const prices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'SOLUSDT'])
+    return {
+      BTC: prices?.BTCUSDT || 0,
+      ETH: prices?.ETHUSDT || 0,
+      SOL: prices?.SOLUSDT || 0,
+    }
   }
 }
 

@@ -4,6 +4,7 @@
  */
 
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { getBinanceAPI } from '../services/binance-api'
 
 interface TechnicalIndicators {
   asset: string
@@ -126,19 +127,17 @@ class TechnicalAnalysis extends BaseAgent {
   }
 
   private async fetchPrices(): Promise<Record<string, number>> {
-    const ids = this.assets
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd`
-
     try {
-      const response = await this.get(url)
-      const prices: Record<string, number> = {}
+      const binance = getBinanceAPI()
+      const binancePrices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'ADAUSDT'])
 
-      if (response.bitcoin?.usd) prices.bitcoin = response.bitcoin.usd
-      if (response.ethereum?.usd) prices.ethereum = response.ethereum.usd
-      if (response.cardano?.usd) prices.cardano = response.cardano.usd
-
-      return prices
+      return {
+        bitcoin: binancePrices?.BTCUSDT || 0,
+        ethereum: binancePrices?.ETHUSDT || 0,
+        cardano: binancePrices?.ADAUSDT || 0,
+      }
     } catch (error) {
+      this.logger.error('Failed to fetch prices', error)
       // Return mock prices for testing
       return {
         bitcoin: 95000 + Math.random() * 5000,

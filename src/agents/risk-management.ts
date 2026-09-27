@@ -4,6 +4,7 @@
  */
 
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { getBinanceAPI } from '../services/binance-api'
 
 interface Position {
   asset: string
@@ -298,15 +299,25 @@ class RiskManagement extends BaseAgent {
     const assets = this.positions.map((p) => p.asset)
     if (assets.length === 0) return {}
 
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${assets.join(',')}&vs_currencies=usd`
-
     try {
-      const response = await this.get(url)
-      const prices: Record<string, number> = {}
+      const binance = getBinanceAPI()
+      const symbolMap: Record<string, string> = {
+        bitcoin: 'BTCUSDT',
+        ethereum: 'ETHUSDT',
+        cardano: 'ADAUSDT',
+        solana: 'SOLUSDT',
+        ripple: 'XRPUSDT',
+      }
 
+      const binanceSymbols = assets.map((asset) => symbolMap[asset] || `${asset.toUpperCase()}USDT`)
+      const binancePrices = await binance.getPrices(binanceSymbols)
+
+      const prices: Record<string, number> = {}
       for (const asset of assets) {
-        if (response[asset]?.usd) {
-          const price = response[asset].usd
+        const binanceSymbol = symbolMap[asset] || `${asset.toUpperCase()}USDT`
+        const price = binancePrices?.[binanceSymbol]
+
+        if (price) {
           prices[asset] = price
 
           // Track price history

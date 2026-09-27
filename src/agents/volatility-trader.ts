@@ -1,4 +1,5 @@
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { getBinanceAPI } from '../services/binance-api'
 
 class VolatilityTrader extends BaseAgent {
   config: AgentConfig = {
@@ -35,10 +36,13 @@ class VolatilityTrader extends BaseAgent {
   }
 
   async fetchPrices(): Promise<Record<string, number>> {
-    const response = await this.get(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,cardano&vs_currencies=usd'
-    )
-    return { BTC: response.bitcoin?.usd || 0, ETH: response.ethereum?.usd || 0, ADA: response.cardano?.usd || 0 }
+    const binance = getBinanceAPI()
+    const prices = await binance.getPrices(['BTCUSDT', 'ETHUSDT', 'ADAUSDT'])
+    return {
+      BTC: prices?.BTCUSDT || 0,
+      ETH: prices?.ETHUSDT || 0,
+      ADA: prices?.ADAUSDT || 0,
+    }
   }
 }
 

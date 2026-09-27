@@ -1,17 +1,12 @@
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { getBinanceAPI } from '../services/binance-api'
 
 interface Holding {
   symbol: string
+  binanceSymbol: string
   quantity: number
   costBasis: number // Cost per unit
   purchaseDate: Date
-}
-
-interface CoinGeckoMultiPrice {
-  [key: string]: {
-    usd: number
-    eur?: number
-  }
 }
 
 interface PortfolioPosition {
@@ -36,25 +31,25 @@ export class PortfolioTracker extends BaseAgent {
     timeout: 15000,
   }
 
-  private apiUrl = 'https://api.coingecko.com/api/v3/simple/price'
-  private currency = 'usd'
-
   // Sample holdings (in production, read from database)
   private holdings: Holding[] = [
     {
-      symbol: 'bitcoin',
+      symbol: 'BTC',
+      binanceSymbol: 'BTCUSDT',
       quantity: 0.5,
       costBasis: 40000,
       purchaseDate: new Date('2024-01-01'),
     },
     {
-      symbol: 'ethereum',
+      symbol: 'ETH',
+      binanceSymbol: 'ETHUSDT',
       quantity: 5,
       costBasis: 2000,
       purchaseDate: new Date('2024-02-01'),
     },
     {
-      symbol: 'cardano',
+      symbol: 'ADA',
+      binanceSymbol: 'ADAUSDT',
       quantity: 100,
       costBasis: 0.5,
       purchaseDate: new Date('2024-03-01'),
@@ -108,18 +103,20 @@ export class PortfolioTracker extends BaseAgent {
   /**
    * Fetch current prices for all holdings
    */
-  private async fetchPrices(): Promise<CoinGeckoMultiPrice> {
+  private async fetchPrices(): Promise<Record<string, number>> {
     try {
-      const symbols = this.holdings.map((h) => h.symbol).join(',')
-      const params = new URLSearchParams({
-        ids: symbols,
-        vs_currencies: this.currency,
-      })
+      const binance = getBinanceAPI()
+      const binanceSymbols = this.holdings.map((h) => h.binanceSymbol)
+      this.logger.debug(`Fetching prices for: ${binanceSymbols.join(', ')}`)
 
-      const url = `${this.apiUrl}?${params.toString()}`
-      this.logger.debug(`Fetching prices for: ${symbols}`)
+      const binancePrices = await binance.getPrices(binanceSymbols)
 
-      return await this.get<CoinGeckoMultiPrice>(url)
+      const prices: Record<string, number> = {}
+      for (const holding of this.holdings) {
+        prices[holding.symbol] = binancePrices?.[holding.binanceSymbol] || 0
+      }
+
+      return prices
     } catch (error) {
       this.logger.error('Failed to fetch prices', error)
       throw error
@@ -129,16 +126,16 @@ export class PortfolioTracker extends BaseAgent {
   /**
    * Calculate portfolio positions
    */
-  private calculatePositions(prices: CoinGeckoMultiPrice): PortfolioPosition[] {
+  private calculatePositions(prices: Record<string, number>): PortfolioPosition[] {
     return this.holdings.map((holding) => {
-      const price = prices[holding.symbol]?.usd || 0
+      const price = prices[holding.symbol] || 0
       const currentValue = holding.quantity * price
       const totalCost = holding.quantity * holding.costBasis
       const gain = currentValue - totalCost
       const gainPercent = totalCost > 0 ? (gain / totalCost) * 100 : 0
 
       return {
-        symbol: holding.symbol.toUpperCase(),
+        symbol: holding.symbol,
         quantity: holding.quantity,
         currentPrice: price,
         currentValue,
@@ -251,9 +248,10 @@ export class PortfolioTracker extends BaseAgent {
   /**
    * Add a new holding
    */
-  addHolding(symbol: string, quantity: number, costBasis: number): void {
+  addHolding(symbol: string, binanceSymbol: string, quantity: number, costBasis: number): void {
     this.holdings.push({
       symbol,
+      binanceSymbol,
       quantity,
       costBasis,
       purchaseDate: new Date(),
@@ -323,8 +321,8 @@ export class PortfolioTracker extends BaseAgent {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await this.get('https://api.coingecko.com/api/v3/ping')
-      return response !== null
+      const prices = await this.fetchPrices()
+      return Object.keys(prices).length > 0
     } catch (error) {
       this.logger.error('Health check failed', error)
       return false
