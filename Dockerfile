@@ -1,5 +1,7 @@
 # Multi-stage build for optimal size
 
+ARG BUILD_DATE=unknown
+
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -14,7 +16,7 @@ RUN npm ci
 # Copy source code
 COPY src/ ./src/
 
-# Build TypeScript
+# Build TypeScript (cache buster: BUILD_DATE=$BUILD_DATE)
 RUN npm run build
 
 # Production image
