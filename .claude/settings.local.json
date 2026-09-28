@@ -20,7 +20,20 @@
       "Bash(pkill -f \"tsx watch\\\\|node dist\")",
       "Bash(kill -9 74110)",
       "Bash(curl -s http://localhost:3000/api/agents/fleet)",
-      "Bash(curl -s http://localhost:3000/api/agents)"
+      "Bash(curl -s http://localhost:3000/api/agents)",
+      "Bash(railway status *)",
+      "Bash(railway up *)",
+      "Bash(railway service *)",
+      "Bash(railway domain *)",
+      "Bash(railway open *)",
+      "Bash(railway logs *)",
+      "Bash(railway env *)",
+      "Bash(railway project *)",
+      "Bash(chmod +x /tmp/check_railway.sh)",
+      "Bash(/tmp/check_railway.sh)",
+      "Bash(railway environment *)",
+      "Bash(railway variable *)",
+      "Bash(git commit -m 'Fix: Allow production deployment with Railway environment variables *)"
     ]
   }
 }

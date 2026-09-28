@@ -41,8 +41,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.personalTradingConfig = void 0;
 const dotenv = __importStar(require("dotenv"));
 const path = __importStar(require("path"));
-// Load .env.local explicitly
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+// Load .env.local if it exists (development), otherwise use environment variables (production)
+const envPath = path.resolve(process.cwd(), '.env.local');
+try {
+    const fs = require('fs');
+    if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath });
+    }
+}
+catch (e) {
+    // File doesn't exist, rely on environment variables instead
+}
 // Determine if using testnet or mainnet
 const useTestnet = (process.env.USE_TESTNET || 'true').toLowerCase() === 'true';
 exports.personalTradingConfig = {
