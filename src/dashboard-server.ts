@@ -49,13 +49,18 @@ app.use((req, res, next) => {
 app.use('/api', apiRouter)
 app.use('/api/dashboard', dashboardApiRouter)
 
-// Serve static files (dashboard frontend)
-app.use(express.static(path.join(__dirname, '../public')))
-
-// Serve index.html for root path
+// Serve WebSocket dashboard for root path (must come BEFORE static files)
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'))
+  res.sendFile(path.join(__dirname, '../public/dashboard-websocket.html'))
 })
+
+// Keep REST dashboard available at alternate route
+app.get('/dashboard-rest', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/dashboard-enhanced.html'))
+})
+
+// Serve static files (dashboard frontend) - fallback for other routes
+app.use(express.static(path.join(__dirname, '../public')))
 
 /**
  * API Endpoints
@@ -160,11 +165,14 @@ wss.on('connection', (ws: WebSocket) => {
   // Send periodic updates (every 1 second)
   const interval = setInterval(() => {
     try {
+      const status = orchestrator.getStatus()
       ws.send(
         JSON.stringify({
           type: 'status-update',
-          timestamp: new Date(),
-          orchestrator: orchestrator.getStatus(),
+          timestamp: new Date().toISOString(),
+          orchestrator: status,
+          agentsOnline: status.agentCount,
+          runningAgents: status.agents?.filter((a: any) => a.isRunning).length || 0,
         })
       )
     } catch (error) {
@@ -255,6 +263,21 @@ orchestrator.on('reversion-entry', (data: any) => {
     ...data,
     timestamp: new Date(),
   })
+})
+
+// Generic signal event listener
+orchestrator.on('signal-generated', (data: any) => {
+  const signal = {
+    type: 'signal-generated',
+    agentId: data.agentId,
+    agentName: data.agentName,
+    symbol: data.symbol,
+    message: data.message,
+    timestamp: new Date().toISOString(),
+    ...data,
+  }
+  broadcastEvent(signal)
+  logger.info(`Signal: ${data.agentName} - ${data.message}`)
 })
 
 /**

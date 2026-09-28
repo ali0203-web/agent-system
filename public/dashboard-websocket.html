@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Trading Dashboard - Real-time WebSocket</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js" integrity="sha384-AZJru7bN6QADj+3tVIVIVVMYOKSpXVzvlPTAdqAO3EqVcVeKg7DF6zeLN+XVNIWX" crossorigin="anonymous"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0f1419;
+      --bg-secondary: #1a1f2e;
+      --bg-tertiary: #252b3d;
+      --text-primary: #e0e0e0;
+      --text-secondary: #a0a0a0;
+      --accent: #00d4ff;
+      --success: #00ff88;
+      --warning: #ffaa00;
+      --danger: #ff3333;
+      --border: #333344;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      overflow-x: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1f2e 0%, #252b3d 100%);
+      border-bottom: 2px solid var(--accent);
+      padding: 20px 40px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-title {
+      font-size: 28px;
+      font-weight: bold;
+      background: linear-gradient(90deg, #00d4ff, #00ff88);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-status {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .status-badge {
+      background: var(--bg-tertiary);
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--accent);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .connection-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
+
+    .connection-indicator.disconnected {
+      background: var(--danger);
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      padding: 30px 40px;
+      max-width: 1920px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 1400px) {
+      .container {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: var(--accent);
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .metric {
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .metric-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .metric-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--accent);
+    }
+
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 15px;
+      grid-column: 1 / -1;
+    }
+
+    .agent-card {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .agent-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+    }
+
+    .agent-name {
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .agent-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+
+    .status-dot.idle {
+      background: var(--text-secondary);
+    }
+
+    .status-dot.running {
+      background: var(--warning);
+    }
+
+    .signal-feed {
+      grid-column: 1 / -1;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .signal-item {
+      padding: 10px;
+      margin-bottom: 8px;
+      background: var(--bg-tertiary);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      font-size: 12px;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .signal-time {
+      color: var(--text-secondary);
+      font-size: 10px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-secondary);
+    }
+
+    .error {
+      background: rgba(255, 51, 51, 0.1);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-tertiary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--accent);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-title">⚡ AgentOS Trading Dashboard (WebSocket)</div>
+    <div class="header-status">
+      <div class="status-badge">
+        <div class="connection-indicator" id="connection-indicator"></div>
+        <span id="connection-status">Connecting...</span>
+      </div>
+      <div class="status-badge">
+        <span id="agent-count">0</span> Agents Online
+      </div>
+      <div class="status-badge">
+        📡 <span id="signal-count">0</span> Signals
+      </div>
+    </div>
+  </div>
+
+  <div class="container" id="dashboard">
+    <div class="card">
+      <div class="card-title">📈 Portfolio Performance</div>
+      <div class="metric">
+        <span class="metric-label">Total P&L</span>
+        <span class="metric-value" id="pnl">$0.00</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Total Trades</span>
+        <span class="metric-value" id="trades">0</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Win Rate</span>
+        <span class="metric-value" id="winrate">0%</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🎯 Top Performers</div>
+      <div id="top-performers" style="font-size: 12px;">
+        <div class="loading">Waiting for data...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚠️ Needs Attention</div>
+      <div id="worst-performers" style="font-size: 12px;">
+        <div class="loading">Waiting for data...</div>
+      </div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <div class="card-title">🤖 Agent Fleet (40/40)</div>
+      <div class="agent-grid" id="agent-list">
+        <div class="loading">Loading agents...</div>
+      </div>
+    </div>
+
+    <div class="signal-feed">
+      <div class="card-title">📡 Live Signal Feed (Real-time)</div>
+      <div id="signal-list">
+        <div class="loading">Waiting for signals...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+
+    let ws = null;
+    let agents = new Map();
+    let signals = [];
+    const MAX_SIGNALS = 50;
+
+    function connectWebSocket() {
+      console.log('Connecting to WebSocket...');
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        updateConnectionStatus(true);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleMessage(data);
+        } catch (e) {
+          console.error('Failed to parse message:', e);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        updateConnectionStatus(false);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        updateConnectionStatus(false);
+        // Reconnect after 3 seconds
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+
+    function updateConnectionStatus(connected) {
+      const indicator = document.getElementById('connection-indicator');
+      const status = document.getElementById('connection-status');
+
+      if (connected) {
+        indicator.classList.remove('disconnected');
+        status.textContent = 'Connected (Live)';
+      } else {
+        indicator.classList.add('disconnected');
+        status.textContent = 'Disconnected';
+      }
+    }
+
+    function handleMessage(data) {
+      if (data.type === 'initial') {
+        // Initial state on connection
+        if (data.orchestrator && data.orchestrator.agents) {
+          data.orchestrator.agents.forEach(agent => {
+            agents.set(agent.id, agent);
+          });
+        }
+        updateAgentList();
+      } else if (data.type === 'status-update') {
+        // Periodic status updates
+        if (data.orchestrator && data.orchestrator.agents) {
+          data.orchestrator.agents.forEach(agent => {
+            agents.set(agent.id, agent);
+          });
+        }
+        updateAgentList();
+      } else if (data.type === 'agent-completed') {
+        // Agent completed execution
+        const agent = agents.get(data.agentId) || { id: data.agentId, name: data.agentId };
+        agent.lastRun = new Date();
+        agent.isRunning = false;
+        agents.set(data.agentId, agent);
+        updateAgentList();
+      } else if (data.type === 'agent-failed') {
+        // Agent failed
+        const agent = agents.get(data.agentId) || { id: data.agentId, name: data.agentId };
+        agent.isRunning = false;
+        agent.lastError = data.error;
+        agents.set(data.agentId, agent);
+        updateAgentList();
+      } else if (data.type.includes('signal')) {
+        // Signal generated
+        addSignal(data);
+      } else if (data.type === 'metric-update') {
+        // Metrics updated
+        updateSummary(data);
+      }
+    }
+
+    function addSignal(signal) {
+      signals.unshift({
+        agent_name: signal.agentName || signal.agentId,
+        agent_id: signal.agentId,
+        signal_type: signal.type,
+        message: signal.message || signal.type,
+        symbol: signal.symbol,
+        timestamp: signal.timestamp || new Date().toISOString()
+      });
+
+      if (signals.length > MAX_SIGNALS) {
+        signals = signals.slice(0, MAX_SIGNALS);
+      }
+
+      updateSignals(signals);
+      document.getElementById('signal-count').textContent = signals.length;
+    }
+
+    function updateAgentList() {
+      const list = document.getElementById('agent-list');
+      const agentArray = Array.from(agents.values());
+
+      if (agentArray.length === 0) {
+        list.innerHTML = '<div class="loading">No agents found</div>';
+        document.getElementById('agent-count').textContent = '0';
+        return;
+      }
+
+      list.innerHTML = agentArray.map(agent => `
+        <div class="agent-card">
+          <div class="agent-name">${agent.name || agent.id}</div>
+          <div class="agent-status">
+            <div class="status-dot ${agent.isRunning ? 'running' : 'idle'}"></div>
+            <span>${agent.isRunning ? 'running' : 'idle'}</span>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('agent-count').textContent = agentArray.length;
+    }
+
+    function updateSignals(signals) {
+      const list = document.getElementById('signal-list');
+      if (!signals.length) {
+        list.innerHTML = '<div class="loading">No signals yet</div>';
+        return;
+      }
+
+      const html = signals.slice(0, 15).map(signal => `
+        <div class="signal-item">
+          <div><strong>${signal.agent_name}</strong> - ${signal.signal_type}</div>
+          <div style="margin-top: 4px; color: var(--text-secondary);">${signal.message || signal.symbol}</div>
+          <div class="signal-time">${new Date(signal.timestamp).toLocaleTimeString()}</div>
+        </div>
+      `).join('');
+
+      list.innerHTML = html;
+    }
+
+    function updateSummary(data) {
+      if (data.totalTrades !== undefined) {
+        document.getElementById('trades').textContent = data.totalTrades;
+      }
+      if (data.totalPnL !== undefined) {
+        document.getElementById('pnl').textContent = `$${data.totalPnL.toFixed(2)}`;
+      }
+      if (data.avgWinRate !== undefined) {
+        document.getElementById('winrate').textContent = `${(data.avgWinRate * 100).toFixed(1)}%`;
+      }
+    }
+
+    // Connect to WebSocket on load
+    window.addEventListener('load', connectWebSocket);
+
+    // Gracefully close WebSocket on unload
+    window.addEventListener('beforeunload', () => {
+      if (ws) {
+        ws.close();
+      }
+    });
+  </script>
+</body>
+</html>
