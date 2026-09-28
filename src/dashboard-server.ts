@@ -14,6 +14,7 @@ import apiRouter from './routes/api'
 import dashboardApiRouter from './routes/dashboard-api'
 import { getAlertingService } from './services/alerting-service'
 import { authMiddleware } from './middleware/auth'
+import { dbInit } from './services/database-init'
 
 const logger = new Logger('DashboardServer')
 const alertingService = getAlertingService()
@@ -399,11 +400,20 @@ function broadcastEvent(event: any) {
 /**
  * Start server
  */
-export function startDashboardServer(port: number = 3001) {
-  server.listen(port, () => {
-    logger.info(`🎯 Dashboard Server running at http://localhost:${port}`)
-    logger.info('📊 Streaming agent metrics and events in real-time')
-  })
+export async function startDashboardServer(port: number = 3001) {
+  try {
+    // Initialize database schema
+    await dbInit.initialize()
+    logger.info('')
+
+    server.listen(port, () => {
+      logger.info(`🎯 Dashboard Server running at http://localhost:${port}`)
+      logger.info('📊 Streaming agent metrics and events in real-time')
+    })
+  } catch (error) {
+    logger.error('Failed to start dashboard server', error)
+    throw error
+  }
 }
 
 export { app, server, wss }
