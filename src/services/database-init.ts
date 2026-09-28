@@ -21,10 +21,8 @@ class DatabaseInitService {
   }
 
   async initialize(): Promise<void> {
-    console.log('🗄️ FORCED LOG: Starting database initialization...')
     try {
-      console.log('🗄️ Inside try block')
-      logger.info('🗄️ Initializing database schema...')
+      logger.info('🗄️ [DB-INIT] Starting database initialization...')
 
       // Inline schema to ensure it always exists
       const schema = `
@@ -106,19 +104,23 @@ class DatabaseInitService {
         .map(s => s.trim())
         .filter(s => s.length > 0 && !s.startsWith('--'))
 
-      logger.info(`📋 Executing ${statements.length} schema statements...`)
+      logger.info(`📋 [DB-INIT] Executing ${statements.length} schema statements...`)
 
+      let successCount = 0
       for (const statement of statements) {
         try {
           await this.pool.query(statement)
+          successCount++
         } catch (error: any) {
           if (!error.message.includes('already exists')) {
-            logger.warn(`⚠️ Schema statement: ${error.message}`)
+            logger.warn(`⚠️ [DB-INIT] Schema statement failed: ${error.message}`)
+          } else {
+            successCount++
           }
         }
       }
 
-      logger.info('✅ Database schema initialized successfully')
+      logger.info(`✅ [DB-INIT] Database schema initialized successfully (${successCount}/${statements.length} statements)`)
     } catch (error) {
       logger.error('❌ Failed to initialize database schema', error)
       // Don't throw - allow app to continue even if schema init fails

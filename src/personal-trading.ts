@@ -27,15 +27,14 @@ async function startPersonalTrading() {
 
   try {
     // Initialize database schema
-    console.log('>>> About to call dbInit.initialize()')
+    logger.info('💾 [STARTUP] About to initialize database...')
     await dbInit.initialize()
-    console.log('>>> dbInit.initialize() completed')
-    logger.info('')
+    logger.info('💾 [STARTUP] Database initialization completed')
 
     // Start dashboard server on exposed port
-    console.log('>>> About to call startDashboardServer(3000)')
+    logger.info('🖥️  [STARTUP] About to start dashboard server...')
     await startDashboardServer(3000)
-    console.log('>>> startDashboardServer(3000) completed')
+    logger.info('🖥️  [STARTUP] Dashboard server started')
     logger.info('')
 
     // Initialize orchestrator

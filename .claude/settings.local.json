@@ -93,7 +93,8 @@
       "Bash(timeout 300 bash -c 'until railway deployment list --service agent-system --limit 1 2>/dev/null | grep -q SUCCESS; do echo \"$\\(date +%H:%M:%S\\) Building...\"; sleep 10; done')",
       "Bash(railway connect --service postgres -- psql -c 'CREATE TABLE IF NOT EXISTS signals \\( *)",
       "Bash(railway connect *)",
-      "Bash(timeout 360 bash -c 'until railway deployment list --service agent-system --limit 1 2>/dev/null | grep -q SUCCESS; do echo \"$\\(date +%H:%M:%S\\) Building...\"; sleep 15; done')"
+      "Bash(timeout 360 bash -c 'until railway deployment list --service agent-system --limit 1 2>/dev/null | grep -q SUCCESS; do echo \"$\\(date +%H:%M:%S\\) Building...\"; sleep 15; done')",
+      "Bash(timeout 360 bash -c 'until railway deployment list --service agent-system --limit 1 2>/dev/null | grep -q SUCCESS; do sleep 15; done')"
     ]
   }
 }
