@@ -69,11 +69,19 @@ export const personalTradingConfig = {
   logFile: 'personal-trading.log',
 }
 
-// Validation
-if (!personalTradingConfig.apiKey || !personalTradingConfig.apiSecret) {
-  const keyType = useTestnet ? 'BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_API_SECRET' : 'BINANCE_API_KEY and BINANCE_API_SECRET'
+// Validation - use dummy values for testnet if not provided
+const apiKey = personalTradingConfig.apiKey || (useTestnet ? 'demo-key' : '')
+const apiSecret = personalTradingConfig.apiSecret || (useTestnet ? 'demo-secret' : '')
+
+// Only throw if using mainnet and credentials are missing
+if (!useTestnet && (!apiKey || !apiSecret)) {
+  const keyType = 'BINANCE_API_KEY and BINANCE_API_SECRET'
   throw new Error(`${keyType} must be set in .env.local`)
 }
+
+// Update config with validated keys
+personalTradingConfig.apiKey = apiKey
+personalTradingConfig.apiSecret = apiSecret
 
 if (personalTradingConfig.capital < 10) {
   throw new Error('Capital must be at least $10')
