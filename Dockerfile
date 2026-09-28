@@ -34,6 +34,9 @@ COPY --from=builder /app/dist ./dist
 # Copy database schema file
 COPY src/db-schema.sql ./dist/db-schema.sql
 
+# Copy public files (dashboard HTML)
+COPY public ./public
+
 # Create logs directory
 RUN mkdir -p logs
 
