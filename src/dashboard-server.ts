@@ -12,8 +12,10 @@ import { orchestrator } from './orchestrator'
 import { Logger } from './logger'
 import apiRouter from './routes/api'
 import dashboardApiRouter from './routes/dashboard-api'
+import { getAlertingService } from './services/alerting-service'
 
 const logger = new Logger('DashboardServer')
+const alertingService = getAlertingService()
 
 const app = express()
 const server = http.createServer(app)
@@ -147,6 +149,30 @@ app.post('/api/agents/:agentId/run', async (req, res) => {
   res.json({ success: true, message: 'Agent trigger queued' })
 })
 
+// Alert system endpoints
+app.get('/api/alerts/status', (req, res) => {
+  res.json({
+    alerts: alertingService.getStats(),
+    configured: {
+      slack: !!process.env.SLACK_WEBHOOK_URL,
+      discord: !!process.env.DISCORD_WEBHOOK_URL,
+    },
+  })
+})
+
+// Test alert endpoint (for debugging)
+app.post('/api/alerts/test', async (req, res) => {
+  const testAlert = {
+    severity: req.body.severity || 'warning',
+    agentName: 'test-agent',
+    symbol: 'BTC/USD',
+    message: 'This is a test alert',
+    confidence: 0.85,
+  }
+  await alertingService.checkAndAlert(req.body.type || 'high-confidence-signal', testAlert)
+  res.json({ success: true, message: 'Test alert sent' })
+})
+
 /**
  * WebSocket Connection Handler
  */
@@ -215,6 +241,7 @@ orchestrator.on('agent-failed', (data: any) => {
     eventHistory.shift()
   }
   broadcastEvent(event)
+  alertingService.checkAndAlert('agent-failed', data)
 })
 
 orchestrator.on('bitcoin-price-alert', (data: any) => {
@@ -278,6 +305,26 @@ orchestrator.on('signal-generated', (data: any) => {
   }
   broadcastEvent(signal)
   logger.info(`Signal: ${data.agentName} - ${data.message}`)
+  if (data.confidence && data.confidence >= 0.85) {
+    alertingService.checkAndAlert('high-confidence-signal', {
+      ...data,
+      agentWinRate: 0.6, // Would be fetched from metrics in production
+    })
+  }
+})
+
+// Portfolio risk alerts
+orchestrator.on('portfolio-risk-update', (data: any) => {
+  if (data.riskLevel === 'high' || data.riskLevel === 'critical') {
+    alertingService.checkAndAlert('portfolio-risk-update', data)
+  }
+})
+
+// Trade completion alerts
+orchestrator.on('trade-closed', (data: any) => {
+  if (data.pnl > 0) {
+    alertingService.checkAndAlert('trade-closed', data)
+  }
 })
 
 /**

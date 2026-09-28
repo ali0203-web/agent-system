@@ -18,7 +18,9 @@ const orchestrator_1 = require("./orchestrator");
 const logger_1 = require("./logger");
 const api_1 = __importDefault(require("./routes/api"));
 const dashboard_api_1 = __importDefault(require("./routes/dashboard-api"));
+const alerting_service_1 = require("./services/alerting-service");
 const logger = new logger_1.Logger('DashboardServer');
+const alertingService = (0, alerting_service_1.getAlertingService)();
 const app = (0, express_1.default)();
 exports.app = app;
 const server = http_1.default.createServer(app);
@@ -49,12 +51,16 @@ app.use((req, res, next) => {
 // API Routes (mount before static files)
 app.use('/api', api_1.default);
 app.use('/api/dashboard', dashboard_api_1.default);
-// Serve static files (dashboard frontend)
-app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
-// Serve index.html for root path
+// Serve WebSocket dashboard for root path (must come BEFORE static files)
 app.get('/', (req, res) => {
-    res.sendFile(path_1.default.join(__dirname, '../public/index.html'));
+    res.sendFile(path_1.default.join(__dirname, '../public/dashboard-websocket.html'));
 });
+// Keep REST dashboard available at alternate route
+app.get('/dashboard-rest', (req, res) => {
+    res.sendFile(path_1.default.join(__dirname, '../public/dashboard-enhanced.html'));
+});
+// Serve static files (dashboard frontend) - fallback for other routes
+app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
 /**
  * API Endpoints
  */
@@ -128,6 +134,28 @@ app.post('/api/agents/:agentId/run', async (req, res) => {
     logger.info(`Manual trigger for agent: ${req.params.agentId}`);
     res.json({ success: true, message: 'Agent trigger queued' });
 });
+// Alert system endpoints
+app.get('/api/alerts/status', (req, res) => {
+    res.json({
+        alerts: alertingService.getStats(),
+        configured: {
+            slack: !!process.env.SLACK_WEBHOOK_URL,
+            discord: !!process.env.DISCORD_WEBHOOK_URL,
+        },
+    });
+});
+// Test alert endpoint (for debugging)
+app.post('/api/alerts/test', async (req, res) => {
+    const testAlert = {
+        severity: req.body.severity || 'warning',
+        agentName: 'test-agent',
+        symbol: 'BTC/USD',
+        message: 'This is a test alert',
+        confidence: 0.85,
+    };
+    await alertingService.checkAndAlert(req.body.type || 'high-confidence-signal', testAlert);
+    res.json({ success: true, message: 'Test alert sent' });
+});
 /**
  * WebSocket Connection Handler
  */
@@ -143,10 +171,13 @@ wss.on('connection', (ws) => {
     // Send periodic updates (every 1 second)
     const interval = setInterval(() => {
         try {
+            const status = orchestrator_1.orchestrator.getStatus();
             ws.send(JSON.stringify({
                 type: 'status-update',
-                timestamp: new Date(),
-                orchestrator: orchestrator_1.orchestrator.getStatus(),
+                timestamp: new Date().toISOString(),
+                orchestrator: status,
+                agentsOnline: status.agentCount,
+                runningAgents: status.agents?.filter((a) => a.isRunning).length || 0,
             }));
         }
         catch (error) {
@@ -185,6 +216,7 @@ orchestrator_1.orchestrator.on('agent-failed', (data) => {
         eventHistory.shift();
     }
     broadcastEvent(event);
+    alertingService.checkAndAlert('agent-failed', data);
 });
 orchestrator_1.orchestrator.on('bitcoin-price-alert', (data) => {
     broadcastEvent({
@@ -227,6 +259,38 @@ orchestrator_1.orchestrator.on('reversion-entry', (data) => {
         ...data,
         timestamp: new Date(),
     });
+});
+// Generic signal event listener
+orchestrator_1.orchestrator.on('signal-generated', (data) => {
+    const signal = {
+        type: 'signal-generated',
+        agentId: data.agentId,
+        agentName: data.agentName,
+        symbol: data.symbol,
+        message: data.message,
+        timestamp: new Date().toISOString(),
+        ...data,
+    };
+    broadcastEvent(signal);
+    logger.info(`Signal: ${data.agentName} - ${data.message}`);
+    if (data.confidence && data.confidence >= 0.85) {
+        alertingService.checkAndAlert('high-confidence-signal', {
+            ...data,
+            agentWinRate: 0.6, // Would be fetched from metrics in production
+        });
+    }
+});
+// Portfolio risk alerts
+orchestrator_1.orchestrator.on('portfolio-risk-update', (data) => {
+    if (data.riskLevel === 'high' || data.riskLevel === 'critical') {
+        alertingService.checkAndAlert('portfolio-risk-update', data);
+    }
+});
+// Trade completion alerts
+orchestrator_1.orchestrator.on('trade-closed', (data) => {
+    if (data.pnl > 0) {
+        alertingService.checkAndAlert('trade-closed', data);
+    }
 });
 /**
  * Broadcast event to all connected dashboard clients
