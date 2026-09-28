@@ -37,7 +37,13 @@
       "Bash(railway run *)",
       "Bash(npm list *)",
       "Bash(git commit -m 'Phase 4: Complete PostgreSQL integration with enhanced dashboard *)",
-      "Bash(git commit -m 'Fix: Allow testnet mode with demo API keys fallback *)"
+      "Bash(git commit -m 'Fix: Allow testnet mode with demo API keys fallback *)",
+      "Bash(gh repo *)",
+      "Bash(railway deploy *)",
+      "Bash(railway --help)",
+      "Bash(railway redeploy *)",
+      "Bash(railway deployment *)",
+      "Bash(git commit *)"
     ]
   }
 }
