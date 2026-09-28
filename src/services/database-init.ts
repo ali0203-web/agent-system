@@ -21,7 +21,9 @@ class DatabaseInitService {
   }
 
   async initialize(): Promise<void> {
+    console.log('🗄️ FORCED LOG: Starting database initialization...')
     try {
+      console.log('🗄️ Inside try block')
       logger.info('🗄️ Initializing database schema...')
 
       // Inline schema to ensure it always exists
