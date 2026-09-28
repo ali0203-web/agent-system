@@ -46,4 +46,3 @@ EXPOSE 3000
 
 # Run the application with personal trading configuration
 CMD ["node", "dist/personal-trading.js"]
-Mon Sep 28 07:34:58 +04 2026
