@@ -24,9 +24,35 @@ class DatabaseInitService {
     try {
       logger.info('🗄️ Initializing database schema...')
 
-      // Read schema file
-      const schemaPath = path.join(__dirname, '..', 'db-schema.sql')
-      const schema = fs.readFileSync(schemaPath, 'utf-8')
+      // Read schema file - try multiple possible paths
+      const possiblePaths = [
+        path.join(__dirname, '..', 'db-schema.sql'),
+        path.join(__dirname, '../../db-schema.sql'),
+        '/app/db-schema.sql',
+        './db-schema.sql',
+      ]
+
+      let schema: string | null = null
+      let schemaPath: string | null = null
+
+      for (const tryPath of possiblePaths) {
+        try {
+          if (fs.existsSync(tryPath)) {
+            schema = fs.readFileSync(tryPath, 'utf-8')
+            schemaPath = tryPath
+            logger.info(`📄 Schema file found at: ${tryPath}`)
+            break
+          }
+        } catch (e) {
+          // Continue to next path
+        }
+      }
+
+      if (!schema) {
+        logger.error(`❌ Could not find db-schema.sql in any of: ${possiblePaths.join(', ')}`)
+        // Continue anyway - tables might already exist
+        return
+      }
 
       // Split by semicolon and execute each statement
       const statements = schema
@@ -34,12 +60,14 @@ class DatabaseInitService {
         .map(s => s.trim())
         .filter(s => s.length > 0 && !s.startsWith('--'))
 
+      logger.info(`📋 Executing ${statements.length} schema statements...`)
+
       for (const statement of statements) {
         try {
           await this.pool.query(statement)
         } catch (error: any) {
           if (!error.message.includes('already exists')) {
-            logger.warn(`⚠️ Schema initialization warning: ${error.message}`)
+            logger.warn(`⚠️ Schema statement warning: ${error.message}`)
           }
         }
       }
@@ -47,7 +75,7 @@ class DatabaseInitService {
       logger.info('✅ Database schema initialized successfully')
     } catch (error) {
       logger.error('❌ Failed to initialize database schema', error)
-      throw error
+      // Don't throw - allow app to continue even if schema init fails
     }
   }
 
