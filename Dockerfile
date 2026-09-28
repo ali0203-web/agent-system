@@ -32,7 +32,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 
 # Copy database schema file
-COPY src/db-schema.sql ./dist/db-schema.sql
+COPY db-schema.sql ./db-schema.sql
 
 # Copy public files (dashboard HTML)
 COPY public ./public
