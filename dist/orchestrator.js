@@ -47,6 +47,7 @@ const correlation_matrix_bot_1 = require("./agents/correlation-matrix-bot");
 const position_sizer_bot_1 = require("./agents/position-sizer-bot");
 const signal_aggregator_bot_1 = require("./agents/signal-aggregator-bot");
 const logger_1 = require("./logger");
+const database_init_1 = require("./services/database-init");
 class Orchestrator extends events_1.EventEmitter {
     constructor() {
         super();
@@ -311,6 +312,20 @@ class Orchestrator extends events_1.EventEmitter {
             const result = await registry.instance.run();
             const duration = Date.now() - startTime;
             this.logger.info(`✅ ${registry.name} completed in ${duration}ms`);
+            // Save signal to database for every successful agent execution
+            try {
+                await database_init_1.dbInit.createSignal(agentId, registry.name, (result?.data?.signal) || (result?.signal) || 'execution', {
+                    message: (result?.data?.message) || (result?.message) || `${registry.name} executed successfully`,
+                    confidence: (result?.data?.confidence) || (result?.confidence) || 0.5,
+                    symbol: (result?.data?.symbol) || (result?.symbol),
+                    agentStatus: 'completed',
+                    executionTime: duration,
+                    data: result
+                });
+            }
+            catch (dbError) {
+                this.logger.error(`Failed to save signal for ${registry.name}`, dbError);
+            }
             this.emit('agent-completed', {
                 agentId,
                 agentName: registry.name,

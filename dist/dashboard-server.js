@@ -19,6 +19,8 @@ const logger_1 = require("./logger");
 const api_1 = __importDefault(require("./routes/api"));
 const dashboard_api_1 = __importDefault(require("./routes/dashboard-api"));
 const alerting_service_1 = require("./services/alerting-service");
+const auth_1 = require("./middleware/auth");
+const database_init_1 = require("./services/database-init");
 const logger = new logger_1.Logger('DashboardServer');
 const alertingService = (0, alerting_service_1.getAlertingService)();
 const app = (0, express_1.default)();
@@ -33,11 +35,24 @@ const eventHistory = [];
 const maxHistoryLength = 500;
 // Middleware
 app.use(express_1.default.json());
-// CORS middleware - allow requests from any origin
+// Security headers middleware
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    res.header('X-Content-Type-Options', 'nosniff');
+    res.header('X-Frame-Options', 'DENY');
+    res.header('X-XSS-Protection', '1; mode=block');
+    res.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+});
+// CORS middleware - allow requests from any origin (can be restricted by API key)
+app.use((req, res, next) => {
+    const allowedOrigins = process.env.ALLOWED_ORIGINS || '*';
+    const origin = req.headers.origin || '*';
+    if (allowedOrigins === '*' || allowedOrigins.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+    }
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+    res.header('Access-Control-Max-Age', '3600');
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200);
     }
@@ -48,7 +63,10 @@ app.use((req, res, next) => {
     logger.info(`${req.method} ${req.path}`);
     next();
 });
-// API Routes (mount before static files)
+// Authentication middleware - protects all /api/* routes
+app.use('/api', auth_1.authMiddleware);
+app.use('/api/dashboard', auth_1.authMiddleware);
+// API Routes (mount after auth)
 app.use('/api', api_1.default);
 app.use('/api/dashboard', dashboard_api_1.default);
 // Serve WebSocket dashboard for root path (must come BEFORE static files)
@@ -155,6 +173,39 @@ app.post('/api/alerts/test', async (req, res) => {
     };
     await alertingService.checkAndAlert(req.body.type || 'high-confidence-signal', testAlert);
     res.json({ success: true, message: 'Test alert sent' });
+});
+// Rate limit and API key info endpoint
+app.get('/api/security/rate-limit', (req, res) => {
+    const { getRateLimitStatus } = require('./middleware/auth');
+    const apiKey = req.apiKey;
+    if (!apiKey) {
+        return res.status(401).json({ error: 'API key required' });
+    }
+    const status = getRateLimitStatus(apiKey);
+    res.json({
+        apiKey: req.clientId,
+        rateLimit: status,
+        message: `${status.remaining} requests remaining in current window (resets in ${(status.resetIn / 1000).toFixed(1)}s)`,
+    });
+});
+// Security info endpoint
+app.get('/api/security/info', (req, res) => {
+    res.json({
+        authentication: {
+            required: true,
+            methods: ['Authorization: Bearer <api-key>', 'X-API-Key: <api-key>', 'Query: ?api_key=<api-key>'],
+        },
+        rateLimit: {
+            enabled: true,
+            maxRequests: 100,
+            windowSeconds: 60,
+            endpoint: '/api/security/rate-limit',
+        },
+        headers: {
+            cors: 'Enabled with X-API-Key support',
+            security: 'HSTS, X-Frame-Options, X-Content-Type-Options enabled',
+        },
+    });
 });
 /**
  * WebSocket Connection Handler
@@ -305,10 +356,22 @@ function broadcastEvent(event) {
 /**
  * Start server
  */
-function startDashboardServer(port = 3001) {
-    server.listen(port, () => {
-        logger.info(`🎯 Dashboard Server running at http://localhost:${port}`);
-        logger.info('📊 Streaming agent metrics and events in real-time');
+async function startDashboardServer(port = 3001) {
+    return new Promise((resolve, reject) => {
+        try {
+            database_init_1.dbInit.initialize().then(() => {
+                logger.info('');
+                server.listen(port, () => {
+                    logger.info(`🎯 Dashboard Server running at http://localhost:${port}`);
+                    logger.info('📊 Streaming agent metrics and events in real-time');
+                    resolve();
+                });
+            }).catch(reject);
+        }
+        catch (error) {
+            logger.error('Failed to start dashboard server', error);
+            reject(error);
+        }
     });
 }
 //# sourceMappingURL=dashboard-server.js.map

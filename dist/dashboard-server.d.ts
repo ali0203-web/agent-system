@@ -11,6 +11,6 @@ declare const wss: WebSocket.Server<typeof WebSocket, typeof http.IncomingMessag
 /**
  * Start server
  */
-export declare function startDashboardServer(port?: number): void;
+export declare function startDashboardServer(port?: number): Promise<void>;
 export { app, server, wss };
 //# sourceMappingURL=dashboard-server.d.ts.map

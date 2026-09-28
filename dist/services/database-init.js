@@ -3,44 +3,9 @@
  * Database Initialization Service
  * Sets up PostgreSQL schema and creates necessary tables
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.dbInit = void 0;
 const pg_1 = require("pg");
-const fs = __importStar(require("fs"));
-const path = __importStar(require("path"));
 const logger_1 = require("../logger");
 const logger = new logger_1.Logger('Database');
 class DatabaseInitService {
@@ -53,21 +18,92 @@ class DatabaseInitService {
     async initialize() {
         try {
             logger.info('🗄️ Initializing database schema...');
-            // Read schema file
-            const schemaPath = path.join(__dirname, '..', 'db-schema.sql');
-            const schema = fs.readFileSync(schemaPath, 'utf-8');
+            // Inline schema to ensure it always exists
+            const schema = `
+        CREATE TABLE IF NOT EXISTS signals (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          agent_id VARCHAR(255) NOT NULL,
+          agent_name VARCHAR(255),
+          symbol VARCHAR(50),
+          signal_type VARCHAR(100),
+          confidence FLOAT,
+          message TEXT,
+          data JSONB,
+          timestamp TIMESTAMPTZ DEFAULT NOW(),
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS trades (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          agent_id VARCHAR(255) NOT NULL,
+          symbol VARCHAR(50) NOT NULL,
+          entry_price FLOAT,
+          exit_price FLOAT,
+          position_size FLOAT,
+          profit_loss FLOAT,
+          status VARCHAR(50),
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          closed_at TIMESTAMPTZ
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_metrics (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          agent_id VARCHAR(255) UNIQUE NOT NULL,
+          agent_name VARCHAR(255),
+          total_trades INT DEFAULT 0,
+          profit_loss FLOAT DEFAULT 0,
+          win_rate FLOAT DEFAULT 0,
+          execution_count INT DEFAULT 0,
+          success_count INT DEFAULT 0,
+          error_count INT DEFAULT 0,
+          last_execution TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS agent_status (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          agent_id VARCHAR(255) UNIQUE NOT NULL,
+          agent_name VARCHAR(255),
+          status VARCHAR(50),
+          execution_time_ms INT,
+          last_execution TIMESTAMPTZ,
+          next_execution TIMESTAMPTZ,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS dashboard_events (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          type VARCHAR(100),
+          agent_id VARCHAR(255),
+          agent_name VARCHAR(255),
+          data JSONB,
+          timestamp TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_signals_agent_id ON signals(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_signals_symbol ON signals(symbol);
+        CREATE INDEX IF NOT EXISTS idx_trades_agent_id ON trades(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
+        CREATE INDEX IF NOT EXISTS idx_agent_metrics_agent_id ON agent_metrics(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_dashboard_events_type ON dashboard_events(type);
+        CREATE INDEX IF NOT EXISTS idx_dashboard_events_timestamp ON dashboard_events(timestamp);
+      `;
             // Split by semicolon and execute each statement
             const statements = schema
                 .split(';')
                 .map(s => s.trim())
                 .filter(s => s.length > 0 && !s.startsWith('--'));
+            logger.info(`📋 Executing ${statements.length} schema statements...`);
             for (const statement of statements) {
                 try {
                     await this.pool.query(statement);
                 }
                 catch (error) {
                     if (!error.message.includes('already exists')) {
-                        logger.warn(`⚠️ Schema initialization warning: ${error.message}`);
+                        logger.warn(`⚠️ Schema statement: ${error.message}`);
                     }
                 }
             }
@@ -75,7 +111,7 @@ class DatabaseInitService {
         }
         catch (error) {
             logger.error('❌ Failed to initialize database schema', error);
-            throw error;
+            // Don't throw - allow app to continue even if schema init fails
         }
     }
     async createSignal(agentId, agentName, signalType, data) {

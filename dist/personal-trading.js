@@ -28,7 +28,7 @@ async function startPersonalTrading() {
         await database_init_1.dbInit.initialize();
         logger.info('');
         // Start dashboard server on exposed port
-        (0, dashboard_server_1.startDashboardServer)(3000);
+        await (0, dashboard_server_1.startDashboardServer)(3000);
         logger.info('');
         // Initialize orchestrator
         await orchestrator_1.orchestrator.start();
