@@ -401,19 +401,21 @@ function broadcastEvent(event: any) {
  * Start server
  */
 export async function startDashboardServer(port: number = 3001) {
-  try {
-    // Initialize database schema
-    await dbInit.initialize()
-    logger.info('')
-
-    server.listen(port, () => {
-      logger.info(`🎯 Dashboard Server running at http://localhost:${port}`)
-      logger.info('📊 Streaming agent metrics and events in real-time')
-    })
-  } catch (error) {
-    logger.error('Failed to start dashboard server', error)
-    throw error
-  }
+  return new Promise<void>((resolve, reject) => {
+    try {
+      dbInit.initialize().then(() => {
+        logger.info('')
+        server.listen(port, () => {
+          logger.info(`🎯 Dashboard Server running at http://localhost:${port}`)
+          logger.info('📊 Streaming agent metrics and events in real-time')
+          resolve()
+        })
+      }).catch(reject)
+    } catch (error) {
+      logger.error('Failed to start dashboard server', error)
+      reject(error)
+    }
+  })
 }
 
 export { app, server, wss }
