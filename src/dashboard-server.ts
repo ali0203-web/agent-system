@@ -10,6 +10,8 @@ import WebSocket from 'ws'
 import path from 'path'
 import { orchestrator } from './orchestrator'
 import { Logger } from './logger'
+import apiRouter from './routes/api'
+import dashboardApiRouter from './routes/dashboard-api'
 
 const logger = new Logger('DashboardServer')
 
@@ -42,6 +44,10 @@ app.use((req, res, next) => {
   logger.info(`${req.method} ${req.path}`)
   next()
 })
+
+// API Routes (mount before static files)
+app.use('/api', apiRouter)
+app.use('/api/dashboard', dashboardApiRouter)
 
 // Serve static files (dashboard frontend)
 app.use(express.static(path.join(__dirname, '../public')))
