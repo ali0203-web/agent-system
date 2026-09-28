@@ -10,6 +10,7 @@ import { orchestrator } from './orchestrator'
 import { personalTradingConfig } from './config.personal'
 import { Logger } from './logger'
 import { startDashboardServer } from './dashboard-server'
+import { dbInit } from './services/database-init'
 
 const logger = new Logger('PersonalTrading')
 
@@ -25,6 +26,10 @@ async function startPersonalTrading() {
   logger.info('')
 
   try {
+    // Initialize database schema
+    await dbInit.initialize()
+    logger.info('')
+
     // Start dashboard server on exposed port
     startDashboardServer(3000)
     logger.info('')

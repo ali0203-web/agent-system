@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Trading Dashboard - Enhanced</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0f1419;
+      --bg-secondary: #1a1f2e;
+      --bg-tertiary: #252b3d;
+      --text-primary: #e0e0e0;
+      --text-secondary: #a0a0a0;
+      --accent: #00d4ff;
+      --success: #00ff88;
+      --warning: #ffaa00;
+      --danger: #ff3333;
+      --border: #333344;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      overflow-x: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1f2e 0%, #252b3d 100%);
+      border-bottom: 2px solid var(--accent);
+      padding: 20px 40px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-title {
+      font-size: 28px;
+      font-weight: bold;
+      background: linear-gradient(90deg, #00d4ff, #00ff88);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-status {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .status-badge {
+      background: var(--bg-tertiary);
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--accent);
+      font-size: 12px;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      padding: 30px 40px;
+      max-width: 1920px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 1400px) {
+      .container {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: var(--accent);
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .metric {
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .metric-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .metric-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--accent);
+    }
+
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 15px;
+      grid-column: 1 / -1;
+    }
+
+    .agent-card {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 15px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .agent-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+    }
+
+    .agent-name {
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .agent-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+
+    .status-dot.idle {
+      background: var(--text-secondary);
+    }
+
+    .signal-feed {
+      grid-column: 1 / -1;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .signal-item {
+      padding: 10px;
+      margin-bottom: 8px;
+      background: var(--bg-tertiary);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    .signal-time {
+      color: var(--text-secondary);
+      font-size: 10px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-secondary);
+    }
+
+    .error {
+      background: rgba(255, 51, 51, 0.1);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-tertiary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--accent);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-title">⚡ AgentOS Trading Dashboard</div>
+    <div class="header-status">
+      <div class="status-badge">
+        <span id="agent-count">0</span> Agents Online
+      </div>
+      <div class="status-badge">
+        📊 <span id="signal-count">0</span> Signals/24h
+      </div>
+    </div>
+  </div>
+
+  <div class="container" id="dashboard">
+    <div class="card">
+      <div class="card-title">📈 Portfolio Performance</div>
+      <div class="metric">
+        <span class="metric-label">Total P&L</span>
+        <span class="metric-value" id="pnl">$0.00</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Total Trades</span>
+        <span class="metric-value" id="trades">0</span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Win Rate</span>
+        <span class="metric-value" id="winrate">0%</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🎯 Top Performers</div>
+      <div id="top-performers" style="font-size: 12px;">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚠️ Needs Attention</div>
+      <div id="worst-performers" style="font-size: 12px;">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <div class="card-title">🤖 Agent Fleet (40/40)</div>
+      <div class="agent-grid" id="agent-list">
+        <div class="loading">Loading agents...</div>
+      </div>
+    </div>
+
+    <div class="signal-feed">
+      <div class="card-title">📡 Live Signal Feed</div>
+      <div id="signal-list">
+        <div class="loading">Waiting for signals...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api/dashboard';
+
+    async function loadDashboard() {
+      try {
+        // Load agents
+        const agentsRes = await fetch(`${API_BASE}/agents`);
+        const agentsData = await agentsRes.json();
+        updateAgentList(agentsData.agents || []);
+
+        // Load summary
+        const summaryRes = await fetch(`${API_BASE}/summary`);
+        const summaryData = await summaryRes.json();
+        updateSummary(summaryData.summary || []);
+
+        // Load signals
+        const signalsRes = await fetch(`${API_BASE}/signals`);
+        const signalsData = await signalsRes.json();
+        updateSignals(signalsData.signals || []);
+      } catch (error) {
+        console.error('Failed to load dashboard:', error);
+        document.getElementById('dashboard').innerHTML = `
+          <div class="error">Error loading dashboard. Check console for details.</div>
+        `;
+      }
+    }
+
+    function updateAgentList(agents) {
+      const list = document.getElementById('agent-list');
+      if (agents.length === 0) {
+        list.innerHTML = '<div class="loading">No agents found</div>';
+        return;
+      }
+
+      list.innerHTML = agents.map(agent => `
+        <div class="agent-card">
+          <div class="agent-name">${agent.name || agent.id}</div>
+          <div class="agent-status">
+            <div class="status-dot ${agent.status === 'running' ? '' : 'idle'}"></div>
+            <span>${agent.status || 'idle'}</span>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('agent-count').textContent = agents.length;
+    }
+
+    function updateSummary(agents) {
+      if (!agents.length) return;
+
+      const totalTrades = agents.reduce((sum, a) => sum + (a.total_trades || 0), 0);
+      const totalPnL = agents.reduce((sum, a) => sum + (a.profit_loss || 0), 0);
+      const avgWinRate = agents.length > 0
+        ? agents.reduce((sum, a) => sum + (a.win_rate || 0), 0) / agents.length
+        : 0;
+
+      document.getElementById('trades').textContent = totalTrades;
+      document.getElementById('pnl').textContent = `$${totalPnL.toFixed(2)}`;
+      document.getElementById('winrate').textContent = `${(avgWinRate * 100).toFixed(1)}%`;
+
+      // Top performers
+      const topPerformers = agents
+        .sort((a, b) => (b.profit_loss || 0) - (a.profit_loss || 0))
+        .slice(0, 3);
+
+      const topHtml = topPerformers.map(a => `
+        <div class="metric">
+          <span>${a.agent_name || a.agent_id}</span>
+          <span style="color: var(--success);">+$${(a.profit_loss || 0).toFixed(2)}</span>
+        </div>
+      `).join('');
+      document.getElementById('top-performers').innerHTML = topHtml || '<div class="loading">No data</div>';
+
+      // Worst performers
+      const worstPerformers = agents
+        .sort((a, b) => (a.profit_loss || 0) - (b.profit_loss || 0))
+        .slice(0, 3);
+
+      const worstHtml = worstPerformers.map(a => `
+        <div class="metric">
+          <span>${a.agent_name || a.agent_id}</span>
+          <span style="color: var(--warning);">-$${Math.abs(a.profit_loss || 0).toFixed(2)}</span>
+        </div>
+      `).join('');
+      document.getElementById('worst-performers').innerHTML = worstHtml || '<div class="loading">No data</div>';
+    }
+
+    function updateSignals(signals) {
+      const list = document.getElementById('signal-list');
+      if (!signals.length) {
+        list.innerHTML = '<div class="loading">No signals yet</div>';
+        return;
+      }
+
+      const html = signals.slice(0, 10).map(signal => `
+        <div class="signal-item">
+          <div><strong>${signal.agent_name}</strong> - ${signal.signal_type}</div>
+          <div style="margin-top: 4px; color: var(--text-secondary);">${signal.message || signal.symbol}</div>
+          <div class="signal-time">${new Date(signal.timestamp).toLocaleTimeString()}</div>
+        </div>
+      `).join('');
+
+      list.innerHTML = html;
+      document.getElementById('signal-count').textContent = signals.length;
+    }
+
+    // Initial load
+    loadDashboard();
+
+    // Refresh every 5 seconds
+    setInterval(loadDashboard, 5000);
+  </script>
+</body>
+</html>

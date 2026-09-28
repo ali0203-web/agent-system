@@ -33,7 +33,10 @@
       "Bash(/tmp/check_railway.sh)",
       "Bash(railway environment *)",
       "Bash(railway variable *)",
-      "Bash(git commit -m 'Fix: Allow production deployment with Railway environment variables *)"
+      "Bash(git commit -m 'Fix: Allow production deployment with Railway environment variables *)",
+      "Bash(railway run *)",
+      "Bash(npm list *)",
+      "Bash(git commit -m 'Phase 4: Complete PostgreSQL integration with enhanced dashboard *)"
     ]
   }
 }
