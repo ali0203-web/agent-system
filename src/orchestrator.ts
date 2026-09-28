@@ -399,23 +399,23 @@ export class Orchestrator extends EventEmitter {
 
       this.logger.info(`✅ ${registry.name} completed in ${duration}ms`)
 
-      // Save signal to database if agent generated one
-      if (result.data && result.data.success) {
-        try {
-          await dbInit.createSignal(
-            agentId,
-            registry.name,
-            result.data.signal || 'execution',
-            {
-              message: result.data.message || `${registry.name} executed successfully`,
-              confidence: result.data.confidence || 0.5,
-              symbol: result.data.symbol,
-              data: result.data
-            }
-          )
-        } catch (dbError) {
-          this.logger.error(`Failed to save signal for ${registry.name}`, dbError)
-        }
+      // Save signal to database for every successful agent execution
+      try {
+        await dbInit.createSignal(
+          agentId,
+          registry.name,
+          (result?.data?.signal) || (result?.signal) || 'execution',
+          {
+            message: (result?.data?.message) || (result?.message) || `${registry.name} executed successfully`,
+            confidence: (result?.data?.confidence) || (result?.confidence) || 0.5,
+            symbol: (result?.data?.symbol) || (result?.symbol),
+            agentStatus: 'completed',
+            executionTime: duration,
+            data: result
+          }
+        )
+      } catch (dbError) {
+        this.logger.error(`Failed to save signal for ${registry.name}`, dbError)
       }
 
       this.emit('agent-completed', {
