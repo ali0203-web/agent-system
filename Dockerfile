@@ -31,6 +31,9 @@ RUN npm ci --omit=dev
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
+# Copy database schema file
+COPY src/db-schema.sql ./dist/db-schema.sql
+
 # Create logs directory
 RUN mkdir -p logs
 
