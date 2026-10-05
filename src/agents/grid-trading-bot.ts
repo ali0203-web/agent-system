@@ -7,6 +7,13 @@
 import { BaseAgent, AgentConfig } from '../base-agent'
 import { getBinanceAPI, OrderFill, OrderStatusInfo, TradeInfo } from '../services/binance-api'
 import { roundQuantity } from '../services/order-rounding'
+import { orderBlockReason } from '../dry-run'
+import {
+  CorruptStateError,
+  GridStateStore,
+  createGridStateStore,
+  parseStateJson,
+} from '../services/grid-state-store'
 
 /**
  * Level lifecycle (driven by what the exchange reports, never assumed):
@@ -37,6 +44,12 @@ interface GridLevel {
   soldAt?: Date
   profit?: number
   profitPercent?: number
+  /**
+   * Write-ahead marker: set and saved BEFORE an order is sent, cleared once the result is
+   * known. If the process dies in between, the marker lets the next start find the order
+   * by its client order id instead of orphaning it.
+   */
+  placing?: { side: 'BUY' | 'SELL'; clientOrderId: string; at: Date }
 }
 
 interface GridPosition {
@@ -81,10 +94,21 @@ class GridTradingBot extends BaseAgent {
   private strayChecked = new Set<string>()
   private rangeState = new Map<string, 'in' | 'above' | 'below'>()
 
+  // Persistence (see services/grid-state-store.ts)
+  private store: GridStateStore | null = null
+  private stateLoaded = false
+  private lastSavedBody = ''
+  private saveChain: Promise<unknown> = Promise.resolve()
+  private lastSaveWarnAt = 0
+
   async execute(): Promise<void> {
     this.logger.info('📊 Grid Trading Bot: Checking grid positions...')
 
     try {
+      // Restore saved grids first. If the saved state can't be read we must not trade:
+      // starting from scratch could duplicate orders or orphan the ones already resting.
+      if (!this.stateLoaded && !(await this.loadState())) return
+
       // Live prices only. If they can't be fetched we skip the run: the bot must
       // never trade on mock, stale or guessed prices.
       const wanted = [
@@ -99,6 +123,7 @@ class GridTradingBot extends BaseAgent {
 
       // Create default grids around the real price the first time we have one
       this.initializeDefaultPositions(prices)
+      await this.persist()
 
       // Update all grid positions
       for (const [symbol, position] of this.positions) {
@@ -126,6 +151,7 @@ class GridTradingBot extends BaseAgent {
         await this.checkGridLevels(position, currentPrice)
       }
 
+      await this.persist()
       this.logger.info('✅ Grid Trading Bot: Check completed')
     } catch (error: any) {
       const errorMsg = error?.message || 'Unknown error'
@@ -151,6 +177,9 @@ class GridTradingBot extends BaseAgent {
     const pair = this.toPair(position.symbol)
     binance.noteLastPrice(pair, currentPrice)
 
+    // 0. Orders whose placement was interrupted (crash, lost response): find them
+    await this.resolvePlacingMarkers(position)
+
     // 1. Find out what happened to the orders we already have resting
     const tradesBefore = position.tradesCompleted
     await this.reconcileLevels(position, currentPrice)
@@ -160,18 +189,32 @@ class GridTradingBot extends BaseAgent {
       // Buy: price is inside the band just under this level
       if (
         level.status === 'pending' &&
+        !level.placing &&
         currentPrice <= level.price &&
         currentPrice >= level.price * 0.98 // Within 2% of grid level
       ) {
+        // Write-ahead: record the intent durably BEFORE the order exists. If we can't,
+        // we don't place it, because an order we can't remember is an orphan waiting to happen.
+        const clientOrderId = this.newClientOrderId(level, 'B')
+        level.placing = { side: 'BUY', clientOrderId, at: new Date() }
+        if (!(await this.persist())) {
+          level.placing = undefined
+          this.logger.error(`❌ ${pair} level ${level.level}: grid state could not be saved, not placing the buy`)
+          continue
+        }
+
         const result = await binance.placeOrder({
           symbol: pair,
           side: 'BUY',
           quantity: position.investmentPerGrid / currentPrice,
           price: currentPrice,
           orderType: 'LIMIT',
+          clientOrderId,
         })
+        level.placing = undefined
 
         if (!result) {
+          await this.persist()
           this.logger.error(
             `❌ Failed to place buy order for ${pair}: ${binance.getLastOrderError()?.message ?? 'unknown reason'}`
           )
@@ -182,6 +225,7 @@ class GridTradingBot extends BaseAgent {
         level.status = 'buy_open'
         level.buyOrderId = result.orderId.toString()
         level.buyOrderPlacedAt = new Date()
+        await this.persist()
 
         this.logger.info(
           `${result.simulated ? '🧪 [DRY RUN] ' : ''}🛒 GRID BUY placed, level ${level.level}: ${result.quantity} ${pair} @ $${result.price} | Order ID: ${result.orderId}`
@@ -209,16 +253,27 @@ class GridTradingBot extends BaseAgent {
       }
 
       // Sell: we hold coins from this level and price reached the 2% target
-      if (level.status === 'filled' && level.heldQty && currentPrice >= level.price * 1.02) {
+      if (level.status === 'filled' && !level.placing && level.heldQty && currentPrice >= level.price * 1.02) {
+        const clientOrderId = this.newClientOrderId(level, 'S')
+        level.placing = { side: 'SELL', clientOrderId, at: new Date() }
+        if (!(await this.persist())) {
+          level.placing = undefined
+          this.logger.error(`❌ ${pair} level ${level.level}: grid state could not be saved, not placing the sell`)
+          continue
+        }
+
         const result = await binance.placeOrder({
           symbol: pair,
           side: 'SELL',
           quantity: level.heldQty, // exactly what we hold (net of fees), not what we meant to buy
           price: currentPrice,
           orderType: 'LIMIT',
+          clientOrderId,
         })
+        level.placing = undefined
 
         if (!result) {
+          await this.persist()
           this.logger.error(
             `❌ Failed to place sell order for ${pair}: ${binance.getLastOrderError()?.message ?? 'unknown reason'}`
           )
@@ -227,6 +282,7 @@ class GridTradingBot extends BaseAgent {
 
         level.status = 'sell_open'
         level.sellOrderId = result.orderId.toString()
+        await this.persist()
 
         this.logger.info(
           `${result.simulated ? '🧪 [DRY RUN] ' : ''}💱 GRID SELL placed, level ${level.level}: ${result.quantity} ${pair} @ $${result.price} | Order ID: ${result.orderId}`
@@ -253,6 +309,8 @@ class GridTradingBot extends BaseAgent {
       }
     }
 
+    await this.persist()
+
     position.totalFilled = position.levels.filter((l) => l.status === 'filled' || l.status === 'sell_open').length
 
     const executedTrades = position.tradesCompleted - tradesBefore
@@ -270,6 +328,204 @@ class GridTradingBot extends BaseAgent {
         timestamp: new Date(),
       })
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Persistence: grids, resting order ids, holdings and profit survive a restart
+  // ---------------------------------------------------------------------------
+
+  private newClientOrderId(level: GridLevel, side: 'B' | 'S'): string {
+    return `g${level.level}${side}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  }
+
+  private stateKey(): string {
+    return `grid:${getBinanceAPI().isTestnet() ? 'testnet' : 'mainnet'}`
+  }
+
+  private getStore(): GridStateStore {
+    if (!this.store) this.store = createGridStateStore(this.db)
+    return this.store
+  }
+
+  /** Orders in the saved state that were simulated (negative id) are not real: drop them. */
+  private sanitizeLevel(level: GridLevel, fresh: () => GridLevel): GridLevel {
+    const simulated = Number(level.buyOrderId) < 0 || Number(level.sellOrderId) < 0
+    return simulated ? fresh() : level
+  }
+
+  private snapshotBody() {
+    return {
+      version: 1,
+      network: getBinanceAPI().isTestnet() ? 'testnet' : 'mainnet',
+      defaultsCreated: [...this.defaultsCreated],
+      positions: [...this.positions.values()].map((p) => ({
+        ...p,
+        // Levels that were only ever simulated (dry run) must never be saved as if they were real
+        levels: p.levels.map((l) =>
+          this.sanitizeLevel(l, () => ({ level: l.level, price: l.price, status: 'pending' as LevelStatus }))
+        ),
+      })),
+    }
+  }
+
+  /**
+   * Save the grid state. Returns false only if it could not be written (callers placing
+   * an order treat that as "do not place"). Nothing is saved before the previous state
+   * has been loaded, and nothing is saved while orders are blocked (dry run / mainnet gate):
+   * simulated orders are not real and there is nothing to protect.
+   */
+  private async persist(): Promise<boolean> {
+    if (!this.stateLoaded) return true
+    const store = this.getStore()
+    if (store.kind === 'off') return true
+    if (orderBlockReason(getBinanceAPI().isTestnet()) !== null) return true
+
+    const body = JSON.stringify(this.snapshotBody())
+    if (body === this.lastSavedBody) return true
+
+    const key = this.stateKey()
+    const write = this.saveChain.then(async () => {
+      await store.save(key, JSON.stringify({ savedAt: new Date().toISOString(), ...JSON.parse(body) }))
+    })
+    this.saveChain = write.catch(() => undefined) // one failed write must not block later ones
+
+    try {
+      await write
+      this.lastSavedBody = body
+      return true
+    } catch (error: any) {
+      if (Date.now() - this.lastSaveWarnAt > 60_000) {
+        this.lastSaveWarnAt = Date.now()
+        this.logger.error(`❌ Could not save grid state (${store.kind}): ${error?.message ?? error}`)
+      }
+      return false
+    }
+  }
+
+  /**
+   * Restore saved grids. Returns true when it is safe to carry on (state restored, or
+   * clean first run) and false when the saved state could not be read or is unusable,
+   * in which case this run does nothing and the next run tries again.
+   */
+  private async loadState(): Promise<boolean> {
+    const store = this.getStore()
+    if (store.kind === 'off') {
+      this.stateLoaded = true
+      return true
+    }
+
+    let saved: any
+    try {
+      const raw = await store.load(this.stateKey())
+      saved = raw === null ? null : parseStateJson(raw)
+      if (saved !== null) this.validateSaved(saved)
+    } catch (error: any) {
+      if (error instanceof CorruptStateError) {
+        this.logger.error(
+          `🛑 Saved grid state (${store.kind}, ${this.stateKey()}) is unusable: ${error.message}. ` +
+            `Not trading, so resting orders are not orphaned. Fix or delete the saved state ` +
+            `(file: data/${this.stateKey().replace(/[^A-Za-z0-9_.-]+/g, '-')}.json, or DELETE FROM grid_state WHERE key='${this.stateKey()}') ` +
+            `and cancel any stale orders on the exchange.`
+        )
+      } else {
+        this.logger.error(
+          `🛑 Could not read saved grid state (${store.kind}): ${error?.message ?? error}. Not trading this run; will retry.`
+        )
+      }
+      return false
+    }
+
+    if (saved === null) {
+      this.stateLoaded = true
+      this.logger.info(`🆕 No saved grid state (${store.kind}), starting fresh`)
+      return true
+    }
+
+    let restored = 0
+    for (const position of saved.positions as GridPosition[]) {
+      const inMemory = this.positions.get(position.symbol)
+      const hasOrders = position.levels.some((l) => l.status !== 'pending' || l.placing)
+      if (inMemory && !hasOrders) continue // a grid added explicitly before start wins when nothing is at stake
+      if (inMemory && hasOrders) {
+        this.logger.warn(
+          `⚠️ ${position.symbol}: ignoring the grid just added in code, because the saved grid has resting orders or holdings`
+        )
+      }
+      this.positions.set(position.symbol, position)
+      restored++
+    }
+    for (const symbol of saved.defaultsCreated ?? []) this.defaultsCreated.add(symbol)
+
+    this.stateLoaded = true
+    this.lastSavedBody = '' // force the first save to re-write the (possibly merged) state
+
+    const levels = [...this.positions.values()].flatMap((p) => p.levels)
+    this.logger.info(
+      `♻️ Restored ${restored} grid(s) from ${store.kind}: ${levels.filter((l) => l.status === 'buy_open' || l.status === 'sell_open').length} resting order(s), ` +
+        `${levels.filter((l) => l.status === 'filled').length} holding coins, ` +
+        `profit $${[...this.positions.values()].reduce((a, p) => a + p.totalProfit, 0).toFixed(4)}`
+    )
+    return true
+  }
+
+  private validateSaved(saved: any): void {
+    if (!saved || typeof saved !== 'object' || saved.version !== 1 || !Array.isArray(saved.positions)) {
+      throw new CorruptStateError('unexpected format or version')
+    }
+    for (const p of saved.positions) {
+      if (typeof p?.symbol !== 'string' || !Array.isArray(p.levels) || typeof p.investmentPerGrid !== 'number') {
+        throw new CorruptStateError(`malformed position ${JSON.stringify(p?.symbol)}`)
+      }
+      for (const l of p.levels) {
+        if (typeof l?.level !== 'number' || typeof l.price !== 'number' || typeof l.status !== 'string') {
+          throw new CorruptStateError(`malformed level in ${p.symbol}`)
+        }
+      }
+    }
+    const network = getBinanceAPI().isTestnet() ? 'testnet' : 'mainnet'
+    if (saved.network && saved.network !== network) {
+      throw new CorruptStateError(`state belongs to ${saved.network}, but this process trades on ${network}`)
+    }
+  }
+
+  /**
+   * A level with a write-ahead marker had an order placement in flight when we last stopped
+   * or lost the response. Look the order up by its client order id: adopt it if it exists,
+   * clear the marker if it definitely does not, and keep waiting if we can't tell.
+   */
+  private async resolvePlacingMarkers(position: GridPosition): Promise<void> {
+    const pair = this.toPair(position.symbol)
+    let changed = false
+
+    for (const level of position.levels) {
+      if (!level.placing) continue
+      const { side, clientOrderId } = level.placing
+      const { order, missing } = await getBinanceAPI().getOrderByClientId(pair, clientOrderId)
+
+      if (order) {
+        if (side === 'BUY') {
+          level.status = 'buy_open'
+          level.buyOrderId = String(order.orderId)
+          level.buyOrderPlacedAt = new Date(order.timestamp)
+        } else {
+          level.status = 'sell_open'
+          level.sellOrderId = String(order.orderId)
+        }
+        this.logger.warn(
+          `♻️ ${pair} level ${level.level}: found the ${side} order that was in flight (#${order.orderId}, ${order.status}), tracking it again`
+        )
+        level.placing = undefined
+        changed = true
+      } else if (missing) {
+        this.logger.info(`↩️ ${pair} level ${level.level}: the ${side} order in flight never reached the exchange, level reset`)
+        level.placing = undefined
+        changed = true
+      } else {
+        this.logger.warn(`⚠️ ${pair} level ${level.level}: cannot tell if the ${side} order in flight exists, waiting`)
+      }
+    }
+
+    if (changed) await this.persist()
   }
 
   /**
@@ -306,6 +562,7 @@ class GridTradingBot extends BaseAgent {
     const pair = this.toPair(position.symbol)
 
     for (const level of position.levels) {
+      if (level.placing) continue // placement not resolved yet; handled by resolvePlacingMarkers
       if (level.status === 'buy_open' && level.buyOrderId) {
         const orderId = Number(level.buyOrderId)
         let status = await binance.getOrderStatus(pair, orderId)
@@ -365,6 +622,7 @@ class GridTradingBot extends BaseAgent {
     level.sellOrderId = undefined
     level.buyOrderPlacedAt = undefined
     level.buyFilledAt = undefined
+    level.placing = undefined
     level.heldQty = undefined
     level.buyNetQty = undefined
     level.buyCost = undefined
@@ -575,6 +833,14 @@ class GridTradingBot extends BaseAgent {
   }
 
   removeGridPosition(symbol: string): void {
+    const existing = this.positions.get(symbol)
+    const active = existing?.levels.filter((l) => l.status !== 'pending').length ?? 0
+    if (active > 0) {
+      this.logger.warn(
+        `⚠️ Removing ${symbol} while ${active} level(s) have resting orders or hold coins: ` +
+          `those orders stay on the exchange and will no longer be tracked`
+      )
+    }
     if (this.positions.delete(symbol)) {
       this.logger.info(`✅ Removed grid position: ${symbol}`)
     }

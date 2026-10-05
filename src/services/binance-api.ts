@@ -20,6 +20,11 @@ export interface BinanceOrder {
   quantity: number
   price?: number
   orderType?: 'LIMIT' | 'MARKET'
+  /**
+   * Caller-chosen id (1-36 chars of A-Z a-z 0-9 - _). Lets a caller record its intent
+   * before the order exists and look the order up again after a crash.
+   */
+  clientOrderId?: string
 }
 
 export interface OrderFill {
@@ -142,6 +147,30 @@ export class BinanceAPI {
     return this.lastOrderError
   }
 
+  /** Which network this client is pointed at. */
+  isTestnet(): boolean {
+    return this.useTestnet
+  }
+
+  /**
+   * Look an order up by the client order id it was placed with. `missing` is true only
+   * when Binance says the order does not exist (-2013); on any other failure (network,
+   * rate limit) the answer is unknown: order null and missing false.
+   */
+  async getOrderByClientId(
+    symbol: string,
+    clientOrderId: string
+  ): Promise<{ order: BinanceOrderResult | null; missing: boolean }> {
+    try {
+      const url = this.signedUrl('/v3/order', { symbol, origClientOrderId: clientOrderId })
+      const response = await axios.get(url, { headers: { 'X-MBX-APIKEY': this.apiKey } })
+      return { order: this.toOrderResult({ ...response.data, transactTime: response.data.time }), missing: false }
+    } catch (error: any) {
+      const code = error?.response?.data?.code
+      return { order: null, missing: code === -2013 }
+    }
+  }
+
   /**
    * Generate HMAC SHA256 signature for requests
    */
@@ -260,7 +289,10 @@ export class BinanceAPI {
     }
 
     // A client order id lets us find the order again if the response is lost
-    const clientOrderId = `grid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const clientOrderId =
+      order.clientOrderId && /^[A-Za-z0-9_-]{1,36}$/.test(order.clientOrderId)
+        ? order.clientOrderId
+        : `grid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
     try {
       const url = this.signedUrl('/v3/order', {
@@ -331,13 +363,7 @@ export class BinanceAPI {
   }
 
   private async findOrderByClientId(symbol: string, clientOrderId: string): Promise<BinanceOrderResult | null> {
-    try {
-      const url = this.signedUrl('/v3/order', { symbol, origClientOrderId: clientOrderId })
-      const response = await axios.get(url, { headers: { 'X-MBX-APIKEY': this.apiKey } })
-      return this.toOrderResult({ ...response.data, transactTime: response.data.time })
-    } catch {
-      return null
-    }
+    return (await this.getOrderByClientId(symbol, clientOrderId)).order
   }
 
   /**

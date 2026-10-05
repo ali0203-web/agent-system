@@ -191,8 +191,8 @@ every run:
   that did fill is kept.
 - If a response is lost (timeout), the order is looked up by its client order id instead of being
   placed twice.
-- Orders still resting on the exchange from before a restart are reported once in the log (grid state
-  is in memory, so a restart forgets them). Cancel them by hand if they are stale.
+- Orders resting on the exchange that the bot does not know about are reported once in the log
+  (e.g. placed by hand, or from before persistence was turned on). Cancel them by hand if stale.
 
 In dry run, simulated orders fill when the last price touches the limit, with a 0.1% fee.
 
@@ -204,3 +204,35 @@ In dry run, simulated orders fill when the last price touches the limit, with a 
 
 Note: with `$50` per level on BTC the step size (0.00001 BTC) is about 2% of the order, so rounding
 dust is large relative to the grid's 2% profit target. Use a larger `investmentPerGrid` for BTC.
+
+## Grid state survives restarts
+
+The grids, resting order ids, coins held, cost basis and profit are saved, so a restart picks up
+where it left off instead of forgetting orders that are still resting on Binance.
+
+| Store | When | Where |
+|---|---|---|
+| `db` | default when `DATABASE_URL` / `POSTGRES_URL` is set | table `grid_state` (created automatically), one row per network |
+| `file` | default otherwise | `./data/` (override with `GRID_STATE_DIR`), written atomically; `data/` is git-ignored |
+| `off` | `GRID_STATE_STORE=off` | nothing is saved |
+
+Set `GRID_STATE_STORE=db|file|off` to override. Use `db` when deployed: a container's disk is wiped on
+every redeploy.
+
+How it protects orders:
+
+- **Write-ahead.** Before an order is sent, the bot saves a marker with the order's client id. If the
+  process dies after Binance accepted the order but before the bot recorded it, the next start looks the
+  order up by that id and tracks it again. If the order never reached Binance, the marker is cleared.
+  If the state cannot be saved, no order is placed.
+- **Fail closed.** If the saved state cannot be read, is corrupt, has an unknown version or belongs to the
+  other network, the bot does not trade at all (and logs why) instead of starting fresh and duplicating or
+  orphaning orders. A read error is retried next run. For a corrupt state, fix or delete it
+  (`data/grid-<network>.json`, or `DELETE FROM grid_state WHERE key = 'grid:testnet'`) and cancel any
+  stale orders on Binance first.
+- **Saved grids win** over a freshly built grid: they are restored as they were, not re-centered on
+  today's price. A grid added in code only replaces a saved one that has nothing at stake.
+- **Dry run saves nothing**, and simulated orders are never written, so paper trading cannot leak into
+  real state. Testnet and mainnet are kept separate.
+
+Only one process should run the grid bot per network: two would both place orders.
