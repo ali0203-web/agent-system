@@ -236,3 +236,17 @@ How it protects orders:
   real state. Testnet and mainnet are kept separate.
 
 Only one process should run the grid bot per network: two would both place orders.
+
+## Running in dry run
+
+```bash
+npm run grid:dry                      # grid bot only: real prices, simulated orders, status every 30 s
+npm run grid:dry -- --cycles 20       # 20 cycles, then a summary (Ctrl+C also prints one)
+npm run grid:dry -- --interval 10     # a cycle every 10 s (or GRID_DRY_INTERVAL_SEC=10)
+npm run dev:dry                       # the whole system with DRY_RUN=true (macOS/Linux shells)
+```
+
+`grid:dry` **forces** `DRY_RUN=true` itself, whatever your environment says, so it can never place a
+real order. It needs no real API keys: prices and exchange rules are public. `USE_TESTNET` in
+`.env.local` picks whose prices are used (default testnet). Simulated orders fill when the price touches
+them, with a 0.1% fee, and nothing is saved between runs.

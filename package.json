@@ -7,6 +7,8 @@
     "dev": "tsx watch src/personal-trading.ts",
     "dev:single": "tsx watch src/index.ts",
     "dev:server": "tsx watch src/server.ts",
+    "dev:dry": "DRY_RUN=true tsx watch src/personal-trading.ts",
+    "grid:dry": "tsx src/grid-dry-run.ts",
     "start": "node dist/index.js",
     "start:server": "node dist/server.js",
     "start:orchestrator": "npm run build && node dist/server.js",

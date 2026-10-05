@@ -850,6 +850,37 @@ class GridTradingBot extends BaseAgent {
     return Array.from(this.positions.values())
   }
 
+  /** One-line-per-grid snapshot for monitoring (read-only). */
+  getStatus(): Array<{
+    symbol: string
+    price: number | undefined
+    bottomPrice: number
+    topPrice: number
+    openBuys: number
+    holding: number
+    openSells: number
+    heldQty: number
+    tradesCompleted: number
+    profit: number
+  }> {
+    return this.getPositions().map((p) => {
+      const history = this.priceHistory.get(p.asset)
+      const count = (status: LevelStatus) => p.levels.filter((l) => l.status === status).length
+      return {
+        symbol: p.symbol,
+        price: history && history.length > 0 ? history[history.length - 1] : undefined,
+        bottomPrice: p.bottomPrice,
+        topPrice: p.topPrice,
+        openBuys: count('buy_open'),
+        holding: count('filled'),
+        openSells: count('sell_open'),
+        heldQty: p.levels.reduce((a, l) => a + ((l.status === 'filled' || l.status === 'sell_open') ? l.heldQty ?? 0 : 0), 0),
+        tradesCompleted: p.tradesCompleted,
+        profit: p.totalProfit,
+      }
+    })
+  }
+
   getPositionBySymbol(symbol: string): GridPosition | undefined {
     return this.positions.get(symbol)
   }
