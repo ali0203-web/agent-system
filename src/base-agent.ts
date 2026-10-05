@@ -2,7 +2,7 @@ import { EventEmitter } from 'events'
 import { v4 as uuidv4 } from 'uuid'
 import axios from 'axios'
 import { Logger } from './logger'
-import { Database } from './database'
+import { Database, DbUnavailableError, isConnectionError } from './database'
 import { signalBus } from './signal-bus'
 
 export interface AgentConfig {
@@ -184,11 +184,15 @@ export abstract class BaseAgent extends EventEmitter {
 
     try {
       await this.db.publishEvent(eventName, data)
-      this.emit('event-published', { eventName, data })
     } catch (error) {
-      this.logger.error(`Failed to publish event ${eventName}`, error)
-      throw error
+      // Persisting the event is best-effort: a database problem must not abort
+      // the agent's run (the signal bus above already has the event).
+      if (!(error instanceof DbUnavailableError) && !isConnectionError(error)) {
+        this.logger.warn(`Failed to persist event ${eventName}: ${(error as Error)?.message ?? error}`)
+      }
     }
+
+    this.emit('event-published', { eventName, data })
   }
 
   /**
@@ -221,7 +225,9 @@ export abstract class BaseAgent extends EventEmitter {
         execution_time: result.executionTime,
       })
     } catch (error) {
-      this.logger.error('Failed to save result to database', error)
+      if (!(error instanceof DbUnavailableError) && !isConnectionError(error)) {
+        this.logger.error('Failed to save result to database', error)
+      }
     }
   }
 

@@ -4,6 +4,82 @@ import { Logger } from './logger'
 
 const logger = new Logger('Database')
 
+/**
+ * Circuit breaker shared by every Database instance (each agent creates its
+ * own). When Postgres is unreachable, repeated writes would each block on the
+ * connection timeout and flood the log with stack traces. After a few
+ * connection failures we pause DB writes for a cooldown, log once, and skip
+ * writes cheaply until the next attempt.
+ */
+const CIRCUIT_FAILURE_THRESHOLD = 3
+const CIRCUIT_COOLDOWN_MS = 60_000
+
+export class DbUnavailableError extends Error {
+  constructor() {
+    super('Database unavailable (circuit open)')
+    this.name = 'DbUnavailableError'
+  }
+}
+
+/** True for "can't reach / lost the server" errors, not for bad SQL etc. */
+export function isConnectionError(error: any): boolean {
+  const code = error?.code
+  if (
+    typeof code === 'string' &&
+    (['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE'].includes(code) ||
+      code.startsWith('08') || // PostgreSQL connection exception class
+      code === '57P01' || // admin shutdown
+      code === '57P03') // cannot connect now
+  ) {
+    return true
+  }
+  if (Array.isArray(error?.errors) && error.errors.length > 0) {
+    return error.errors.some(isConnectionError) // AggregateError from multi-address connects
+  }
+  return /connection terminated|connection timeout|timeout exceeded when trying to connect/i.test(
+    String(error?.message ?? '')
+  )
+}
+
+const circuit = {
+  failures: 0,
+  openUntil: 0,
+  skipped: 0,
+
+  guard(): void {
+    if (this.openUntil > Date.now()) {
+      this.skipped++
+      throw new DbUnavailableError()
+    }
+  },
+
+  success(): void {
+    if (this.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+      logger.info('✅ Database reachable again, resuming writes')
+    }
+    this.failures = 0
+    this.openUntil = 0
+  },
+
+  failure(error: any): void {
+    this.failures++
+    if (this.failures === 1) {
+      logger.warn(`⚠️ Database write failed (${error?.code ?? error?.message ?? 'unknown error'})`)
+    }
+    if (this.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+      const skipped = this.skipped
+      this.skipped = 0
+      this.openUntil = Date.now() + CIRCUIT_COOLDOWN_MS
+      logger.warn(
+        `⚠️ Database unreachable after ${this.failures} consecutive failures; ` +
+          `pausing writes for ${CIRCUIT_COOLDOWN_MS / 1000}s` +
+          (skipped > 0 ? ` (${skipped} writes skipped since last check)` : '') +
+          '. Agents keep running; signals stay in memory.'
+      )
+    }
+  },
+}
+
 export class Database {
   private pgPool: Pool
   private redisClient: RedisClientType
@@ -155,6 +231,7 @@ export class Database {
    * Insert data
    */
   async insert(table: string, data: Record<string, any>): Promise<any> {
+    circuit.guard()
     try {
       const columns = Object.keys(data)
       const values = Object.values(data)
@@ -167,9 +244,14 @@ export class Database {
       `
 
       const result = await this.pgPool.query(query, values)
+      circuit.success()
       return result.rows[0]
     } catch (error) {
-      logger.error(`Insert into ${table} failed`, error)
+      if (isConnectionError(error)) {
+        circuit.failure(error) // logs once / on open; avoids a stack dump per write
+      } else {
+        logger.error(`Insert into ${table} failed`, error)
+      }
       throw error
     }
   }
@@ -201,7 +283,10 @@ export class Database {
         emitted_by: emittedBy,
       })
     } catch (error) {
-      logger.error('Publish event failed', error)
+      // Connection problems are already reported by the circuit breaker
+      if (!(error instanceof DbUnavailableError) && !isConnectionError(error)) {
+        logger.error('Publish event failed', error)
+      }
     }
   }
 
