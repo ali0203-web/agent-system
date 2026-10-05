@@ -223,7 +223,7 @@ export abstract class BaseAgent extends EventEmitter {
         error: result.error,
         executed_at: result.executedAt.toISOString(),
         execution_time: result.executionTime,
-      })
+      }, { bufferOnFailure: true })
     } catch (error) {
       if (!(error instanceof DbUnavailableError) && !isConnectionError(error)) {
         this.logger.error('Failed to save result to database', error)
