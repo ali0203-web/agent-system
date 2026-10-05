@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import axios from 'axios'
 import { Logger } from './logger'
 import { Database } from './database'
+import { signalBus } from './signal-bus'
 
 export interface AgentConfig {
   name: string
@@ -176,6 +177,10 @@ export abstract class BaseAgent extends EventEmitter {
    */
   async publishEvent(eventName: string, data: any): Promise<void> {
     this.logger.debug(`Publishing event: ${eventName}`)
+
+    // Record in the in-memory signal bus first so consumers (e.g. the Signal
+    // Aggregator) still see it when the database is unavailable.
+    signalBus.record(this.config.name, eventName, data)
 
     try {
       await this.db.publishEvent(eventName, data)
