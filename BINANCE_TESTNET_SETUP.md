@@ -169,3 +169,38 @@ Orders against **mainnet** (`USE_TESTNET=false`, real money) are only sent when
 - `DRY_RUN=true` still wins: with both set, orders are simulated.
 - Testnet is not affected by this setting.
 - Like dry run, cancelling a real order is also blocked while the gate is closed.
+
+## Order rounding and fill tracking
+
+**Rounding.** Before any order is sent, `BinanceAPI.placeOrder` loads the symbol's exchange
+rules (`/v3/exchangeInfo`, cached for an hour) and snaps the order to them: price to the tick size
+(BUY rounds down, SELL rounds up), quantity down to the step size, then checks `minQty` and
+`minNotional`. An order Binance would reject is **not sent**: `placeOrder` returns `null` and
+`getLastOrderError()` says why. If the rules cannot be loaded, live orders are refused (fail closed).
+In dry run, orders are rounded and validated the same way, so config problems show up early.
+
+**Fill tracking.** The grid bot no longer assumes an order filled because it was placed. Each level
+moves `pending -> buy_open -> filled -> sell_open -> pending`, driven by what the exchange reports on
+every run:
+
+- A resting buy only counts once it fills. Spot charges the buy fee in the base coin, so the bot
+  holds (and later sells) the fee-adjusted quantity, rounded down to the step size.
+- Profit is booked only when the sell fills, from the real fills and fees. Unsellable rounding
+  dust is kept as inventory, not counted as a loss.
+- A buy that has not filled after `GRID_BUY_TTL_MIN` minutes (default 60) is cancelled; any part
+  that did fill is kept.
+- If a response is lost (timeout), the order is looked up by its client order id instead of being
+  placed twice.
+- Orders still resting on the exchange from before a restart are reported once in the log (grid state
+  is in memory, so a restart forgets them). Cancel them by hand if they are stale.
+
+In dry run, simulated orders fill when the last price touches the limit, with a 0.1% fee.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GRID_RANGE_PCT` | `0.04` | Half-width of a new default grid around the live price |
+| `GRID_BUY_TTL_MIN` | `60` | Cancel an unfilled resting buy after this many minutes |
+| `GRID_FEE_FALLBACK` | `0.001` | Buy fee assumed only if Binance's trade list cannot be read |
+
+Note: with `$50` per level on BTC the step size (0.00001 BTC) is about 2% of the order, so rounding
+dust is large relative to the grid's 2% profit target. Use a larger `investmentPerGrid` for BTC.

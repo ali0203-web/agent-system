@@ -5,15 +5,35 @@
  */
 
 import { BaseAgent, AgentConfig } from '../base-agent'
-import { getBinanceAPI } from '../services/binance-api'
+import { getBinanceAPI, OrderFill, OrderStatusInfo, TradeInfo } from '../services/binance-api'
+import { roundQuantity } from '../services/order-rounding'
+
+/**
+ * Level lifecycle (driven by what the exchange reports, never assumed):
+ *   pending   -> price enters the buy band, BUY placed          -> buy_open
+ *   buy_open  -> BUY filled (or part-filled and cancelled)      -> filled  (holding heldQty)
+ *             -> BUY cancelled/expired with nothing filled      -> pending
+ *   filled    -> price reaches the sell target, SELL placed      -> sell_open
+ *   sell_open -> SELL filled: profit booked from actual fills    -> pending
+ *             -> SELL cancelled/expired                          -> filled
+ */
+type LevelStatus = 'pending' | 'buy_open' | 'filled' | 'sell_open' | 'cancelled'
 
 interface GridLevel {
   level: number
   price: number
   buyOrderId?: string
   sellOrderId?: string
-  status: 'pending' | 'filled' | 'cancelled'
+  status: LevelStatus
+  buyOrderPlacedAt?: Date
   buyFilledAt?: Date
+  /** Base asset actually held after the buy, net of fees and rounded to the step size. */
+  heldQty?: number
+  /** Base asset received after fees, before rounding to the step (heldQty plus unsellable dust). */
+  buyNetQty?: number
+  /** Quote asset actually spent on the buy. */
+  buyCost?: number
+  buyAvgPrice?: number
   soldAt?: Date
   profit?: number
   profitPercent?: number
@@ -28,8 +48,9 @@ interface GridPosition {
   investmentPerGrid: number
   gridSize: number // price difference between levels
   totalInvestment: number
-  totalFilled: number
+  totalFilled: number // levels currently holding inventory or with a sell resting
   totalProfit: number
+  tradesCompleted: number // completed buy+sell round trips
   levels: GridLevel[]
   isActive: boolean
   createdAt: Date
@@ -57,6 +78,7 @@ class GridTradingBot extends BaseAgent {
     { asset: 'ethereum', symbol: 'ETHUSDT', levels: 8, investmentPerGrid: 30 },
   ]
   private defaultsCreated = new Set<string>()
+  private strayChecked = new Set<string>()
   private rangeState = new Map<string, 'in' | 'above' | 'below'>()
 
   async execute(): Promise<void> {
@@ -98,6 +120,8 @@ class GridTradingBot extends BaseAgent {
         // The grid is static: tell the operator when the market has left it
         this.warnIfOutOfRange(position, currentPrice)
 
+        await this.warnAboutUntrackedOrders(position)
+
         // Check and execute grid orders
         await this.checkGridLevels(position, currentPrice)
       }
@@ -110,114 +134,359 @@ class GridTradingBot extends BaseAgent {
     }
   }
 
+  /** Cancel a resting buy that has not filled after this long (default 60 min). */
+  private get buyTtlMs(): number {
+    const minutes = parseFloat(process.env.GRID_BUY_TTL_MIN || '60')
+    return Math.min(1440, Math.max(1, Number.isFinite(minutes) ? minutes : 60)) * 60_000
+  }
+
+  /** Fee assumed on a buy only when the exchange can't tell us the real one. */
+  private get feeFallback(): number {
+    const f = parseFloat(process.env.GRID_FEE_FALLBACK || '0.001')
+    return Math.min(0.01, Math.max(0, Number.isFinite(f) ? f : 0.001))
+  }
+
   private async checkGridLevels(position: GridPosition, currentPrice: number): Promise<void> {
     const binance = getBinanceAPI()
-    let filledCount = 0
-    let executedTrades = 0
+    const pair = this.toPair(position.symbol)
+    binance.noteLastPrice(pair, currentPrice)
 
+    // 1. Find out what happened to the orders we already have resting
+    const tradesBefore = position.tradesCompleted
+    await this.reconcileLevels(position, currentPrice)
+
+    // 2. Place new orders
     for (const level of position.levels) {
-      // Check if we should buy
+      // Buy: price is inside the band just under this level
       if (
         level.status === 'pending' &&
         currentPrice <= level.price &&
         currentPrice >= level.price * 0.98 // Within 2% of grid level
       ) {
-        // Place real Binance order
-        const orderResult = await binance.placeOrder({
-          symbol: position.symbol,
+        const result = await binance.placeOrder({
+          symbol: pair,
           side: 'BUY',
           quantity: position.investmentPerGrid / currentPrice,
           price: currentPrice,
           orderType: 'LIMIT',
         })
 
-        if (orderResult) {
-          level.status = 'filled'
-          level.buyOrderId = orderResult.orderId.toString()
-          level.buyFilledAt = new Date()
-          filledCount++
-
-          this.logger.info(
-            `✅ ${orderResult.simulated ? '🧪 [DRY RUN] ' : ''}GRID BUY Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Order ID: ${orderResult.orderId}`
+        if (!result) {
+          this.logger.error(
+            `❌ Failed to place buy order for ${pair}: ${binance.getLastOrderError()?.message ?? 'unknown reason'}`
           )
+          continue
+        }
 
-          this.emit('grid-buy-order', {
-            symbol: position.symbol,
-            level: level.level,
-            price: currentPrice,
-            amount: position.investmentPerGrid,
-            orderId: orderResult.orderId,
-            simulated: orderResult.simulated === true,
-            timestamp: new Date(),
-          })
-        } else {
-          this.logger.error(`❌ Failed to place buy order for ${position.symbol}`)
+        // The order is resting, not filled: it only counts once the exchange says so
+        level.status = 'buy_open'
+        level.buyOrderId = result.orderId.toString()
+        level.buyOrderPlacedAt = new Date()
+
+        this.logger.info(
+          `${result.simulated ? '🧪 [DRY RUN] ' : ''}🛒 GRID BUY placed, level ${level.level}: ${result.quantity} ${pair} @ $${result.price} | Order ID: ${result.orderId}`
+        )
+        this.emit('grid-buy-order', {
+          symbol: position.symbol,
+          level: level.level,
+          price: result.price,
+          quantity: result.quantity,
+          amount: position.investmentPerGrid,
+          orderId: result.orderId,
+          simulated: result.simulated === true,
+          timestamp: new Date(),
+        })
+
+        // A limit order that crosses the book can fill immediately
+        if (result.executedQty > 0 && result.executedQty >= result.quantity) {
+          await this.onBuyFilled(
+            position,
+            level,
+            { executedQty: result.executedQty, cummulativeQuoteQty: result.cummulativeQuoteQty },
+            result.fills
+          )
         }
       }
 
-      // Check if we should sell (price bounced up)
-      if (level.status === 'filled' && !level.soldAt && currentPrice >= level.price * 1.02) {
-        // 2% profit target - place real Binance order
-        const sellOrderResult = await binance.placeOrder({
-          symbol: position.symbol,
+      // Sell: we hold coins from this level and price reached the 2% target
+      if (level.status === 'filled' && level.heldQty && currentPrice >= level.price * 1.02) {
+        const result = await binance.placeOrder({
+          symbol: pair,
           side: 'SELL',
-          quantity: position.investmentPerGrid / level.price,
+          quantity: level.heldQty, // exactly what we hold (net of fees), not what we meant to buy
           price: currentPrice,
           orderType: 'LIMIT',
         })
 
-        if (sellOrderResult) {
-          level.soldAt = new Date()
-          level.sellOrderId = sellOrderResult.orderId.toString()
-          level.profit = (currentPrice - level.price) * (position.investmentPerGrid / level.price)
-          level.profitPercent = ((currentPrice - level.price) / level.price) * 100
-
-          position.totalProfit += level.profit
-          executedTrades++
-
-          this.logger.info(
-            `💰 ${sellOrderResult.simulated ? '🧪 [DRY RUN] ' : ''}GRID SELL Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Profit: $${level.profit.toFixed(2)} | Order ID: ${sellOrderResult.orderId}`
+        if (!result) {
+          this.logger.error(
+            `❌ Failed to place sell order for ${pair}: ${binance.getLastOrderError()?.message ?? 'unknown reason'}`
           )
+          continue
+        }
 
-          this.emit('grid-sell-order', {
-            symbol: position.symbol,
-            level: level.level,
-            buyPrice: level.price,
-            sellPrice: currentPrice,
-            profit: level.profit,
-            profitPercent: level.profitPercent,
-            orderId: sellOrderResult.orderId,
-            simulated: sellOrderResult.simulated === true,
-            timestamp: new Date(),
-          })
+        level.status = 'sell_open'
+        level.sellOrderId = result.orderId.toString()
 
-          // Reset level for next cycle
-          level.status = 'pending'
-          level.buyFilledAt = undefined
-          level.soldAt = undefined
-        } else {
-          this.logger.error(`❌ Failed to place sell order for ${position.symbol}`)
+        this.logger.info(
+          `${result.simulated ? '🧪 [DRY RUN] ' : ''}💱 GRID SELL placed, level ${level.level}: ${result.quantity} ${pair} @ $${result.price} | Order ID: ${result.orderId}`
+        )
+        this.emit('grid-sell-placed', {
+          symbol: position.symbol,
+          level: level.level,
+          price: result.price,
+          quantity: result.quantity,
+          orderId: result.orderId,
+          simulated: result.simulated === true,
+          timestamp: new Date(),
+        })
+
+        if (result.executedQty > 0 && result.executedQty >= result.quantity) {
+          await this.onSellFilled(
+            position,
+            level,
+            { executedQty: result.executedQty, cummulativeQuoteQty: result.cummulativeQuoteQty },
+            result.fills,
+            result.simulated === true
+          )
         }
       }
     }
 
-    position.totalFilled = filledCount
+    position.totalFilled = position.levels.filter((l) => l.status === 'filled' || l.status === 'sell_open').length
 
-    // Log summary
+    const executedTrades = position.tradesCompleted - tradesBefore
     if (executedTrades > 0) {
       this.logger.info(
-        `📈 Grid Summary ${position.symbol}: ${executedTrades} trades executed | Total profit: $${position.totalProfit.toFixed(2)}`
+        `📈 Grid Summary ${position.symbol}: ${executedTrades} trades completed | Total profit: $${position.totalProfit.toFixed(4)}`
       )
 
       this.emit('grid-summary', {
         symbol: position.symbol,
         tradesExecuted: executedTrades,
         totalProfit: position.totalProfit,
-        filledLevels: filledCount,
+        filledLevels: position.totalFilled,
         gridRange: `$${position.bottomPrice.toFixed(2)} - $${position.topPrice.toFixed(2)}`,
         timestamp: new Date(),
       })
     }
+  }
+
+  /**
+   * Grid state lives in memory, so after a restart any orders still resting on the
+   * exchange are no longer tracked. Once per symbol per process, look for them and
+   * warn (read-only; nothing is cancelled).
+   */
+  private async warnAboutUntrackedOrders(position: GridPosition): Promise<void> {
+    const pair = this.toPair(position.symbol)
+    if (this.strayChecked.has(pair)) return
+    this.strayChecked.add(pair)
+
+    const open = await getBinanceAPI().getOpenOrders(pair)
+    if (!open || open.length === 0) return
+
+    const tracked = new Set(
+      position.levels.flatMap((l) => [l.buyOrderId, l.sellOrderId]).filter(Boolean) as string[]
+    )
+    const stray = open.filter((o) => !tracked.has(String(o.orderId)))
+    if (stray.length > 0) {
+      this.logger.warn(
+        `⚠️ ${pair}: ${stray.length} open order(s) on the exchange are not tracked by this grid ` +
+          `(e.g. left over from before a restart): ${stray
+            .slice(0, 5)
+            .map((o) => `${o.side} ${o.origQty}@${o.price} #${o.orderId}`)
+            .join(', ')}. Cancel them manually if they are stale.`
+      )
+    }
+  }
+
+  /** Update every level with an open order from what the exchange reports. */
+  private async reconcileLevels(position: GridPosition, currentPrice: number): Promise<void> {
+    const binance = getBinanceAPI()
+    const pair = this.toPair(position.symbol)
+
+    for (const level of position.levels) {
+      if (level.status === 'buy_open' && level.buyOrderId) {
+        const orderId = Number(level.buyOrderId)
+        let status = await binance.getOrderStatus(pair, orderId)
+        if (!status) {
+          this.logger.warn(`⚠️ ${pair} level ${level.level}: could not read buy order ${orderId}, will retry next run`)
+          continue
+        }
+
+        // A buy that has been resting too long is cancelled so capital isn't tied up
+        // chasing a price that has moved away; whatever filled so far is kept.
+        const open = !this.isTerminal(status.status)
+        const age = Date.now() - (level.buyOrderPlacedAt?.getTime() ?? Date.now())
+        if (open && status.status !== 'FILLED' && age > this.buyTtlMs) {
+          this.logger.info(`⏱️ ${pair} level ${level.level}: buy ${orderId} unfilled after ${Math.round(age / 60000)} min, cancelling`)
+          await binance.cancelOrder(pair, orderId)
+          const after = await binance.getOrderStatus(pair, orderId)
+          if (after) status = after
+        }
+
+        if (status.status === 'FILLED' || status.executedQty > 0) {
+          if (status.status !== 'FILLED' && !this.isTerminal(status.status)) continue // part-filled, still resting
+          await this.onBuyFilled(position, level, status)
+        } else if (this.isTerminal(status.status)) {
+          this.logger.info(`↩️ ${pair} level ${level.level}: buy ${orderId} ${status.status} with nothing filled, level reset`)
+          this.resetLevel(level)
+        }
+      } else if (level.status === 'sell_open' && level.sellOrderId) {
+        const orderId = Number(level.sellOrderId)
+        const status = await binance.getOrderStatus(pair, orderId)
+        if (!status) {
+          this.logger.warn(`⚠️ ${pair} level ${level.level}: could not read sell order ${orderId}, will retry next run`)
+          continue
+        }
+
+        if (status.status === 'FILLED') {
+          await this.onSellFilled(position, level, status, undefined, status.simulated === true)
+        } else if (this.isTerminal(status.status)) {
+          // Sell cancelled/expired: we still hold what was not sold and can try again
+          const sold = status.executedQty
+          if (sold > 0 && level.heldQty !== undefined) level.heldQty = Math.max(0, level.heldQty - sold)
+          this.logger.warn(`↩️ ${pair} level ${level.level}: sell ${orderId} ${status.status}, still holding ${level.heldQty}`)
+          level.status = level.heldQty && level.heldQty > 0 ? 'filled' : 'pending'
+          level.sellOrderId = undefined
+        }
+        // else: still resting at the target price, which is the point of a grid
+      }
+    }
+  }
+
+  private isTerminal(status: string): boolean {
+    return ['FILLED', 'CANCELED', 'EXPIRED', 'EXPIRED_IN_MATCH', 'REJECTED'].includes(status)
+  }
+
+  private resetLevel(level: GridLevel): void {
+    level.status = 'pending'
+    level.buyOrderId = undefined
+    level.sellOrderId = undefined
+    level.buyOrderPlacedAt = undefined
+    level.buyFilledAt = undefined
+    level.heldQty = undefined
+    level.buyNetQty = undefined
+    level.buyCost = undefined
+    level.buyAvgPrice = undefined
+  }
+
+  /** Fees, split by asset, from the fills of one order. */
+  private sumFills(fills: Array<Pick<TradeInfo, 'qty' | 'commission' | 'commissionAsset'>>, asset: string) {
+    return {
+      qty: fills.reduce((a, f) => a + f.qty, 0),
+      fee: fills.filter((f) => f.commissionAsset === asset).reduce((a, f) => a + f.commission, 0),
+    }
+  }
+
+  private async assets(pair: string): Promise<{ base: string; quote: string }> {
+    const rules = await getBinanceAPI().getSymbolRules(pair)
+    const quote = rules?.quoteAsset ?? (pair.match(/(USDT|BUSD|USDC|FDUSD)$/)?.[1] || 'USDT')
+    return { base: rules?.baseAsset ?? pair.slice(0, pair.length - quote.length), quote }
+  }
+
+  /** A buy filled (fully, or partially then cancelled): record what we actually hold. */
+  private async onBuyFilled(
+    position: GridPosition,
+    level: GridLevel,
+    status: Pick<OrderStatusInfo, 'executedQty' | 'cummulativeQuoteQty'>,
+    knownFills?: OrderFill[]
+  ): Promise<void> {
+    const binance = getBinanceAPI()
+    const pair = this.toPair(position.symbol)
+    const { base } = await this.assets(pair)
+
+    // Spot charges the buy fee in the base asset, so we hold less than we bought
+    const fills: Array<Pick<TradeInfo, 'qty' | 'commission' | 'commissionAsset'>> | null =
+      knownFills && knownFills.length > 0
+        ? knownFills
+        : await binance.getOrderTrades(pair, Number(level.buyOrderId))
+
+    let net: number
+    let estimated = false
+    if (fills && fills.length > 0) {
+      const { qty, fee } = this.sumFills(fills, base)
+      net = qty - fee
+    } else {
+      net = status.executedQty * (1 - this.feeFallback)
+      estimated = true
+    }
+
+    const rules = await binance.getSymbolRules(pair)
+    const held = rules ? roundQuantity(net, rules) : net
+
+    level.status = 'filled'
+    level.heldQty = held
+    level.buyNetQty = net
+    level.buyCost = status.cummulativeQuoteQty
+    level.buyAvgPrice = status.executedQty > 0 ? status.cummulativeQuoteQty / status.executedQty : level.price
+    level.buyFilledAt = new Date()
+
+    this.logger.info(
+      `✅ GRID BUY filled, level ${level.level}: ${pair} bought ${status.executedQty} for $${status.cummulativeQuoteQty.toFixed(4)}, ` +
+        `holding ${held} ${base}${estimated ? ` (fee ESTIMATED at ${(this.feeFallback * 100).toFixed(2)}%: trade list unavailable)` : ''}`
+    )
+    this.emit('grid-buy-filled', {
+      symbol: position.symbol,
+      level: level.level,
+      orderId: Number(level.buyOrderId),
+      executedQty: status.executedQty,
+      heldQty: held,
+      cost: status.cummulativeQuoteQty,
+      feeEstimated: estimated,
+      timestamp: new Date(),
+    })
+  }
+
+  /** A sell filled: book profit from the real proceeds and cost, then free the level. */
+  private async onSellFilled(
+    position: GridPosition,
+    level: GridLevel,
+    status: Pick<OrderStatusInfo, 'executedQty' | 'cummulativeQuoteQty'>,
+    knownFills: OrderFill[] | undefined,
+    simulated: boolean
+  ): Promise<void> {
+    const binance = getBinanceAPI()
+    const pair = this.toPair(position.symbol)
+    const { quote } = await this.assets(pair)
+
+    const fills: Array<Pick<TradeInfo, 'qty' | 'commission' | 'commissionAsset'>> | null =
+      knownFills && knownFills.length > 0
+        ? knownFills
+        : await binance.getOrderTrades(pair, Number(level.sellOrderId))
+
+    // Sell fees come out of the quote asset. Fees paid in another asset (e.g. BNB)
+    // can't be netted here, so profit is then slightly overstated.
+    const fee = fills ? this.sumFills(fills, quote).fee : 0
+    const proceeds = status.cummulativeQuoteQty - fee
+    // Rounding down to the step leaves a little unsellable dust. It is still an asset,
+    // so only the cost of the coins actually sold is set against the proceeds.
+    const boughtNet = level.buyNetQty ?? 0
+    const fullCost = level.buyCost ?? 0
+    const cost = boughtNet > 0 ? fullCost * Math.min(1, status.executedQty / boughtNet) : fullCost
+    const profit = proceeds - cost
+    const avgSell = status.executedQty > 0 ? status.cummulativeQuoteQty / status.executedQty : 0
+
+    position.totalProfit += profit
+    position.tradesCompleted++
+
+    this.logger.info(
+      `💰 ${simulated ? '🧪 [DRY RUN] ' : ''}GRID SELL filled, level ${level.level}: ${pair} @ $${avgSell.toFixed(2)} | ` +
+        `Profit: $${profit.toFixed(4)} (proceeds $${proceeds.toFixed(4)} - cost $${cost.toFixed(4)})`
+    )
+    this.emit('grid-sell-order', {
+      symbol: position.symbol,
+      level: level.level,
+      buyPrice: level.buyAvgPrice ?? level.price,
+      sellPrice: avgSell,
+      profit,
+      profitPercent: cost > 0 ? (profit / cost) * 100 : 0,
+      orderId: Number(level.sellOrderId),
+      simulated,
+      timestamp: new Date(),
+    })
+
+    this.resetLevel(level) // ready for the next cycle
   }
 
   /** "BTC" -> "BTCUSDT"; symbols that already carry a quote asset are unchanged. */
@@ -293,6 +562,7 @@ class GridTradingBot extends BaseAgent {
       totalInvestment: gridLevels * investmentPerGrid,
       totalFilled: 0,
       totalProfit: 0,
+      tradesCompleted: 0,
       levels,
       isActive: true,
       createdAt: new Date(),
@@ -326,13 +596,13 @@ class GridTradingBot extends BaseAgent {
     const position = this.positions.get(symbol)
     if (!position) return null
 
-    const filledLevels = position.levels.filter((l) => l.soldAt).length
-    const fillRate = (filledLevels / position.gridLevels) * 100
+    const active = position.levels.filter((l) => l.status !== 'pending').length
+    const fillRate = (active / position.gridLevels) * 100
 
     return {
       totalProfit: position.totalProfit,
-      tradesCompleted: filledLevels,
-      fillRate,
+      tradesCompleted: position.tradesCompleted,
+      fillRate, // share of levels currently holding coins or with an order resting
     }
   }
 
@@ -361,15 +631,15 @@ class GridTradingBot extends BaseAgent {
 
   /**
    * Rebuild a grid around the current live price (same width, level count and
-   * investment; profit history kept). Refuses while any level holds a buy,
-   * because re-centering would orphan that inventory. Returns whether it ran.
+   * investment; profit history kept). Refuses while any level has a resting order
+   * or holds coins, because re-centering would orphan them. Returns whether it ran.
    */
   async recenterGridPosition(symbol: string): Promise<boolean> {
     const position = this.positions.get(symbol)
     if (!position) return false
 
-    if (position.levels.some((l) => l.status === 'filled')) {
-      this.logger.warn(`⚠️ ${symbol}: not re-centering, some levels still hold open buys`)
+    if (position.levels.some((l) => l.status !== 'pending')) {
+      this.logger.warn(`⚠️ ${symbol}: not re-centering, some levels have resting orders or hold coins`)
       return false
     }
 
@@ -381,7 +651,7 @@ class GridTradingBot extends BaseAgent {
     }
 
     const halfWidth = (position.topPrice - position.bottomPrice) / 2
-    const { totalProfit, createdAt } = position
+    const { totalProfit, tradesCompleted, createdAt } = position
     this.addGridPosition(
       position.asset,
       position.symbol,
@@ -392,6 +662,7 @@ class GridTradingBot extends BaseAgent {
     )
     const rebuilt = this.positions.get(symbol)!
     rebuilt.totalProfit = totalProfit
+    rebuilt.tradesCompleted = tradesCompleted
     rebuilt.createdAt = createdAt
     this.rangeState.delete(symbol)
     this.logger.info(`🔁 ${symbol} grid re-centered on live price $${price.toFixed(2)}`)
