@@ -47,27 +47,43 @@ class GridTradingBot extends BaseAgent {
   private positions: Map<string, GridPosition> = new Map()
   private priceHistory: Map<string, number[]> = new Map()
   private maxHistoryLength = 100
-  private initialized = false
+
+  /**
+   * Default grids, created once around the LIVE price (never a hardcoded range).
+   * Half-width of each grid is GRID_RANGE_PCT (default 4%) either side of the price.
+   */
+  private defaultGrids = [
+    { asset: 'bitcoin', symbol: 'BTCUSDT', levels: 10, investmentPerGrid: 50 },
+    { asset: 'ethereum', symbol: 'ETHUSDT', levels: 8, investmentPerGrid: 30 },
+  ]
+  private defaultsCreated = new Set<string>()
+  private rangeState = new Map<string, 'in' | 'above' | 'below'>()
 
   async execute(): Promise<void> {
     this.logger.info('📊 Grid Trading Bot: Checking grid positions...')
 
     try {
-      // Initialize default grid positions on first run
-      if (!this.initialized) {
-        await this.initializeDefaultPositions()
-        this.initialized = true
+      // Live prices only. If they can't be fetched we skip the run: the bot must
+      // never trade on mock, stale or guessed prices.
+      const wanted = [
+        ...this.defaultGrids.filter((g) => !this.defaultsCreated.has(g.symbol)).map((g) => g.symbol),
+        ...this.positions.keys(),
+      ]
+      const prices = await this.fetchCurrentPrices(wanted)
+      if (!prices) {
+        this.logger.warn('⚠️ No live prices available, skipping this run (no orders placed)')
+        return
       }
 
-      // Fetch current prices
-      const prices = await this.fetchCurrentPrices()
+      // Create default grids around the real price the first time we have one
+      this.initializeDefaultPositions(prices)
 
       // Update all grid positions
       for (const [symbol, position] of this.positions) {
-        const currentPrice = prices[position.asset]
+        const currentPrice = prices.get(this.toPair(symbol))
 
         if (!currentPrice) {
-          this.logger.warn(`⚠️ Could not fetch price for ${position.asset}`)
+          this.logger.warn(`⚠️ No live price for ${symbol}, skipping it this run`)
           continue
         }
 
@@ -78,6 +94,9 @@ class GridTradingBot extends BaseAgent {
           history.shift()
         }
         this.priceHistory.set(position.asset, history)
+
+        // The grid is static: tell the operator when the market has left it
+        this.warnIfOutOfRange(position, currentPrice)
 
         // Check and execute grid orders
         await this.checkGridLevels(position, currentPrice)
@@ -201,16 +220,44 @@ class GridTradingBot extends BaseAgent {
     }
   }
 
-  private async fetchCurrentPrices(): Promise<Record<string, number>> {
-    // TESTNET DEMO MODE: Using mock prices to trigger real order execution
-    // This allows us to demonstrate Binance API integration without rate limits
-    const mockPrices: Record<string, number> = {
-      bitcoin: 43000, // Within BTCUSDT grid ($42k-$44k) - will trigger buys
-      ethereum: 2300, // Within ETHUSDT grid ($2.2k-$2.4k) - will trigger buys
-    }
+  /** "BTC" -> "BTCUSDT"; symbols that already carry a quote asset are unchanged. */
+  private toPair(symbol: string): string {
+    return /(USDT|BUSD|USDC|FDUSD)$/.test(symbol) ? symbol : `${symbol}USDT`
+  }
 
-    this.logger.info(`📊 [TESTNET DEMO] Using mock prices for grid trading simulation`)
-    return mockPrices
+  /**
+   * Live prices from the venue we trade on (BinanceAPI uses the testnet or
+   * mainnet ticker matching its order endpoint). Returns null if none could be
+   * fetched; invalid values (non-finite, <= 0) are discarded.
+   */
+  private async fetchCurrentPrices(symbols: string[]): Promise<Map<string, number> | null> {
+    const pairs = [...new Set(symbols.map((s) => this.toPair(s)))]
+    if (pairs.length === 0) return new Map()
+
+    const raw = await getBinanceAPI().getPrices(pairs)
+    if (!raw) return null
+
+    const prices = new Map<string, number>()
+    for (const [pair, price] of Object.entries(raw)) {
+      if (Number.isFinite(price) && price > 0) prices.set(pair, price)
+    }
+    return prices.size > 0 ? prices : null
+  }
+
+  private warnIfOutOfRange(position: GridPosition, price: number): void {
+    const state = price > position.topPrice ? 'above' : price < position.bottomPrice * 0.98 ? 'below' : 'in'
+    if (this.rangeState.get(position.symbol) === state) return
+    this.rangeState.set(position.symbol, state)
+
+    if (state !== 'in') {
+      this.logger.warn(
+        `⚠️ ${position.symbol} price $${price.toFixed(2)} is ${state} the grid ` +
+          `($${position.bottomPrice.toFixed(2)} - $${position.topPrice.toFixed(2)}): no buys will trigger until it returns` +
+          ` or the grid is re-centered (recenterGridPosition)`
+      )
+    } else {
+      this.logger.info(`✅ ${position.symbol} price is back inside the grid range`)
+    }
   }
 
   // Public methods
@@ -289,30 +336,66 @@ class GridTradingBot extends BaseAgent {
     }
   }
 
-  private async initializeDefaultPositions(): Promise<void> {
-    this.logger.info('🚀 Initializing default grid positions...')
+  private initializeDefaultPositions(prices: Map<string, number>): void {
+    const halfRange = Math.min(0.5, Math.max(0.005, parseFloat(process.env.GRID_RANGE_PCT || '0.04') || 0.04))
 
-    // Set up default grid positions for major crypto pairs
-    // These will be automatically traded by the grid strategy
+    for (const grid of this.defaultGrids) {
+      if (this.defaultsCreated.has(grid.symbol)) continue
+      const price = prices.get(grid.symbol)
+      if (!price) continue // no live price yet: try again next run
+
+      this.addGridPosition(
+        grid.asset,
+        grid.symbol,
+        grid.levels,
+        price * (1 - halfRange),
+        price * (1 + halfRange),
+        grid.investmentPerGrid
+      )
+      this.defaultsCreated.add(grid.symbol)
+      this.logger.info(
+        `📍 ${grid.symbol} grid centered on live price $${price.toFixed(2)} (±${(halfRange * 100).toFixed(1)}%)`
+      )
+    }
+  }
+
+  /**
+   * Rebuild a grid around the current live price (same width, level count and
+   * investment; profit history kept). Refuses while any level holds a buy,
+   * because re-centering would orphan that inventory. Returns whether it ran.
+   */
+  async recenterGridPosition(symbol: string): Promise<boolean> {
+    const position = this.positions.get(symbol)
+    if (!position) return false
+
+    if (position.levels.some((l) => l.status === 'filled')) {
+      this.logger.warn(`⚠️ ${symbol}: not re-centering, some levels still hold open buys`)
+      return false
+    }
+
+    const prices = await this.fetchCurrentPrices([symbol])
+    const price = prices?.get(this.toPair(symbol))
+    if (!price) {
+      this.logger.warn(`⚠️ ${symbol}: no live price, grid not re-centered`)
+      return false
+    }
+
+    const halfWidth = (position.topPrice - position.bottomPrice) / 2
+    const { totalProfit, createdAt } = position
     this.addGridPosition(
-      'bitcoin',
-      'BTCUSDT',
-      10, // 10 grid levels
-      42000, // Bottom price
-      44000, // Top price
-      50 // $50 per grid level
+      position.asset,
+      position.symbol,
+      position.gridLevels,
+      price - halfWidth,
+      price + halfWidth,
+      position.investmentPerGrid
     )
-
-    this.addGridPosition(
-      'ethereum',
-      'ETHUSDT',
-      8, // 8 grid levels
-      2200, // Bottom price
-      2400, // Top price
-      30 // $30 per grid level
-    )
-
-    this.logger.info('✅ Default positions initialized and ready for trading')
+    const rebuilt = this.positions.get(symbol)!
+    rebuilt.totalProfit = totalProfit
+    rebuilt.createdAt = createdAt
+    this.rangeState.delete(symbol)
+    this.logger.info(`🔁 ${symbol} grid re-centered on live price $${price.toFixed(2)}`)
+    return true
   }
 }
 
