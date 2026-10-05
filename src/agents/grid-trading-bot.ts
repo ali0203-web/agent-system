@@ -119,7 +119,7 @@ class GridTradingBot extends BaseAgent {
           filledCount++
 
           this.logger.info(
-            `✅ GRID BUY Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Order ID: ${orderResult.orderId}`
+            `✅ ${orderResult.simulated ? '🧪 [DRY RUN] ' : ''}GRID BUY Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Order ID: ${orderResult.orderId}`
           )
 
           this.emit('grid-buy-order', {
@@ -128,6 +128,7 @@ class GridTradingBot extends BaseAgent {
             price: currentPrice,
             amount: position.investmentPerGrid,
             orderId: orderResult.orderId,
+            simulated: orderResult.simulated === true,
             timestamp: new Date(),
           })
         } else {
@@ -156,7 +157,7 @@ class GridTradingBot extends BaseAgent {
           executedTrades++
 
           this.logger.info(
-            `💰 GRID SELL Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Profit: $${level.profit.toFixed(2)} | Order ID: ${sellOrderResult.orderId}`
+            `💰 ${sellOrderResult.simulated ? '🧪 [DRY RUN] ' : ''}GRID SELL Level ${level.level}: ${position.symbol} @ $${currentPrice.toFixed(2)} | Profit: $${level.profit.toFixed(2)} | Order ID: ${sellOrderResult.orderId}`
           )
 
           this.emit('grid-sell-order', {
@@ -167,6 +168,7 @@ class GridTradingBot extends BaseAgent {
             profit: level.profit,
             profitPercent: level.profitPercent,
             orderId: sellOrderResult.orderId,
+            simulated: sellOrderResult.simulated === true,
             timestamp: new Date(),
           })
 

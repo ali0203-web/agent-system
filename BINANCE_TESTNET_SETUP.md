@@ -143,3 +143,18 @@ That's it! Same code, same agents, now trading with real money.
 ---
 
 **Ready?** Provide your testnet API keys and I'll activate the system.
+
+## Dry run (block all orders)
+
+Set `DRY_RUN=true` in `.env.local` (or the environment) to stop the system from sending
+**any** order or cancellation to Binance. Orders are simulated instead: they get a negative
+`orderId`, status `DRY_RUN` and `simulated: true`, so bots run their full logic and events
+are tagged as simulated. Cancelling a *real* order is also blocked in dry run.
+
+- `DRY_RUN` unset, `false`, `0`, `no` or `off`: orders are sent (the default).
+- `DRY_RUN` set to `true`, `1`, `yes` or `on`: dry run.
+- Any other value (for example a typo like `ture`): treated as dry run, so a typo can't enable trading.
+
+The flag is read every time an order is placed, so it takes effect without a restart,
+but set it **before** starting the process for the startup banner to be accurate.
+Use it when running against mainnet until you have checked the bots' behaviour.

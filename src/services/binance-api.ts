@@ -6,6 +6,7 @@
 import axios from 'axios'
 import crypto from 'crypto'
 import { Logger } from '../logger'
+import { isDryRun, parseDryRun } from '../dry-run'
 
 interface BinanceOrder {
   symbol: string
@@ -23,6 +24,8 @@ interface BinanceOrderResult {
   price: number
   status: string
   timestamp: number
+  /** True when DRY_RUN is on: nothing was sent to the exchange. */
+  simulated?: boolean
 }
 
 interface BinanceBalance {
@@ -37,6 +40,8 @@ export class BinanceAPI {
   private baseUrl: string
   private logger = new Logger('BinanceAPI')
   private useTestnet: boolean
+  private dryRunOrders: BinanceOrderResult[] = []
+  private nextSimulatedOrderId = -1
 
   constructor(apiKey: string, apiSecret: string, useTestnet: boolean = true) {
     this.apiKey = apiKey
@@ -45,6 +50,21 @@ export class BinanceAPI {
     this.baseUrl = useTestnet
       ? 'https://testnet.binance.vision/api'
       : 'https://api.binance.com/api'
+
+    const { dryRun, recognized } = parseDryRun(process.env.DRY_RUN)
+    if (!recognized) {
+      this.logger.warn(`⚠️ Unrecognised DRY_RUN value "${process.env.DRY_RUN}", treating as dry run`)
+    }
+    this.logger.info(
+      dryRun
+        ? '🧪 DRY RUN is ON: orders will be simulated, none sent to Binance'
+        : `⚠️ LIVE ORDERS enabled on ${useTestnet ? 'TESTNET' : 'MAINNET (REAL MONEY)'}. Set DRY_RUN=true to block orders`
+    )
+  }
+
+  /** Orders simulated while DRY_RUN was on (newest last), for inspection and tests. */
+  getDryRunOrders(): BinanceOrderResult[] {
+    return [...this.dryRunOrders]
   }
 
   /**
@@ -58,6 +78,27 @@ export class BinanceAPI {
    * Place a real order on Binance
    */
   async placeOrder(order: BinanceOrder): Promise<BinanceOrderResult | null> {
+    // Dry run: never sign or send. Return a clearly fake order (negative id,
+    // status DRY_RUN, simulated: true) so callers can run their logic end to end.
+    if (isDryRun()) {
+      const simulated: BinanceOrderResult = {
+        orderId: this.nextSimulatedOrderId--,
+        symbol: order.symbol,
+        side: order.side,
+        quantity: order.quantity,
+        price: order.price || 0,
+        status: 'DRY_RUN',
+        timestamp: Date.now(),
+        simulated: true,
+      }
+      this.dryRunOrders.push(simulated)
+      if (this.dryRunOrders.length > 500) this.dryRunOrders.shift()
+      this.logger.info(
+        `🧪 DRY RUN: would place ${order.side} ${order.quantity} ${order.symbol} @ ${order.price} (not sent)`
+      )
+      return simulated
+    }
+
     try {
       const timestamp = Date.now()
       const params = {
@@ -140,6 +181,20 @@ export class BinanceAPI {
    * Cancel an order
    */
   async cancelOrder(symbol: string, orderId: number): Promise<boolean> {
+    // Dry run: simulated orders (negative ids) were never sent, so "cancelling"
+    // them succeeds locally. A real order id is NOT cancelled: dry run makes no
+    // state-changing calls, and reporting success would be a lie.
+    if (isDryRun()) {
+      if (orderId < 0) {
+        this.logger.info(`🧪 DRY RUN: simulated order ${orderId} cancelled locally`)
+        return true
+      }
+      this.logger.warn(
+        `🧪 DRY RUN: real order ${orderId} on ${symbol} was NOT cancelled (no exchange changes in dry run)`
+      )
+      return false
+    }
+
     try {
       const timestamp = Date.now()
       const params = {
@@ -173,6 +228,14 @@ export class BinanceAPI {
    * Get order status
    */
   async getOrderStatus(symbol: string, orderId: number): Promise<any | null> {
+    // Simulated orders don't exist on the exchange; answer locally
+    if (orderId < 0) {
+      const sim = this.dryRunOrders.find((o) => o.orderId === orderId)
+      return sim
+        ? { orderId, status: 'DRY_RUN', executedQty: 0, origQty: sim.quantity, simulated: true }
+        : null
+    }
+
     try {
       const timestamp = Date.now()
       const params = {
