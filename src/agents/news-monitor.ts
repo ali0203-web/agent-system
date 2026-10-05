@@ -1,9 +1,15 @@
 /**
  * Agent #5: News Monitor
  * Monitors cryptocurrency news sources for price-moving events and trading signals
+ *
+ * Sources: Cointelegraph and Decrypt RSS (no key needed), plus NewsAPI when
+ * NEWS_API_KEY is set. A source that fails is skipped; if every source fails the
+ * run throws. There is no mock/placeholder data.
  */
 
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { parseRss } from '../services/rss'
+import { containsTerm, findTerms } from '../services/text-match'
 
 interface NewsItem {
   id: string
@@ -17,24 +23,48 @@ interface NewsItem {
   summary: string
 }
 
-class NewsMonitor extends BaseAgent {
+interface FetchResult {
+  items: NewsItem[]
+  sourcesTried: number
+  sourcesOk: number
+}
+
+const NEWS_FEEDS = [
+  { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
+  { name: 'Decrypt', url: 'https://decrypt.co/feed' },
+]
+const NEWS_API_URL =
+  'https://newsapi.org/v2/everything?q=cryptocurrency&sortBy=publishedAt&language=en&pageSize=20'
+
+// Only items published this recently are considered, so a restart (which clears
+// the in-memory history) doesn't replay a whole feed of old stories as alerts.
+const MAX_AGE_MS = 3 * 60 * 60 * 1000
+const MAX_HISTORY = 100
+
+export class NewsMonitor extends BaseAgent {
   config: AgentConfig = {
     name: 'news-monitor',
     category: 'intelligence',
-    version: '1.0.0',
+    version: '2.0.0',
     description: 'Cryptocurrency News Monitoring Agent',
     schedule: '*/30 * * * *', // Every 30 minutes
   }
 
   private newsHistory: NewsItem[] = []
+
+  // Matched as whole words (plural/past endings allowed); forms that aren't a
+  // plain ending, like "rallies" or "banned", are listed explicitly.
   private keywordsPositive = [
     'partnership',
     'approval',
     'launch',
     'upgrade',
     'bull',
+    'bullish',
     'surge',
     'rally',
+    'rallies',
+    'rallied',
     'breakthrough',
     'adoption',
   ]
@@ -44,8 +74,10 @@ class NewsMonitor extends BaseAgent {
     'crash',
     'exploit',
     'ban',
+    'banned',
     'regulation',
     'bear',
+    'bearish',
     'collapse',
     'concern',
   ]
@@ -54,11 +86,16 @@ class NewsMonitor extends BaseAgent {
     this.logger.info('📰 News Monitor: Starting news scan...')
 
     try {
-      // Fetch news from multiple sources
-      const newsItems = await this.fetchNews()
+      const { items, sourcesTried, sourcesOk } = await this.fetchNews()
+
+      if (sourcesOk === 0) {
+        throw new Error(`All news sources are unavailable (${sourcesTried} tried)`)
+      }
+
+      const newsItems = this.selectNewItems(items)
 
       if (newsItems.length === 0) {
-        this.logger.warn('⚠️ No news items fetched')
+        this.logger.info('📰 News Monitor: No new news items since last scan')
         return
       }
 
@@ -75,7 +112,7 @@ class NewsMonitor extends BaseAgent {
 
         // Add to history
         this.newsHistory.unshift(item)
-        if (this.newsHistory.length > 100) {
+        if (this.newsHistory.length > MAX_HISTORY) {
           this.newsHistory.pop()
         }
 
@@ -110,7 +147,7 @@ class NewsMonitor extends BaseAgent {
         })
       }
 
-      this.logger.info('✅ News Monitor: Scan completed')
+      this.logger.info(`✅ News Monitor: Scan completed (${newsItems.length} new items)`)
     } catch (error: any) {
       const errorMsg = error?.message || 'Unknown error'
       this.logger.error(`❌ News Monitor failed: ${errorMsg}`)
@@ -118,84 +155,92 @@ class NewsMonitor extends BaseAgent {
     }
   }
 
-  private async fetchNews(): Promise<NewsItem[]> {
-    const newsItems: NewsItem[] = []
+  /** Recent items not already in history, de-duplicated, newest first. */
+  private selectNewItems(items: NewsItem[]): NewsItem[] {
+    const seen = new Set(this.newsHistory.map((n) => n.id))
+    const cutoff = Date.now() - MAX_AGE_MS
+    const fresh: NewsItem[] = []
 
-    try {
-      // Fetch from NewsAPI
-      const newsApiUrl =
-        'https://newsapi.org/v2/everything?q=cryptocurrency&sortBy=publishedAt&language=en&pageSize=10'
+    for (const item of items) {
+      if (seen.has(item.id) || item.timestamp.getTime() < cutoff) continue
+      seen.add(item.id)
+      fresh.push(item)
+    }
 
-      const response = await this.get(newsApiUrl)
+    return fresh.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+  }
 
-      if (response.articles && Array.isArray(response.articles)) {
-        for (const article of response.articles.slice(0, 5)) {
-          newsItems.push({
-            id: `news-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            title: article.title || 'Untitled',
-            source: article.source?.name || 'Unknown',
-            url: article.url || '',
+  private async fetchNews(): Promise<FetchResult> {
+    const items: NewsItem[] = []
+    let sourcesTried = 0
+    let sourcesOk = 0
+
+    for (const feed of NEWS_FEEDS) {
+      sourcesTried++
+      try {
+        const xml = await this.get<string>(feed.url, { 'User-Agent': 'Mozilla/5.0' }, 1)
+        const entries = parseRss(typeof xml === 'string' ? xml : '')
+
+        // A real feed always has items; none parsed means the format changed or
+        // we were served something else, which should not look like "no news".
+        if (entries.length === 0) {
+          throw new Error('feed contained no parseable items')
+        }
+
+        for (const entry of entries) {
+          items.push({
+            id: entry.id,
+            title: entry.title,
+            source: feed.name,
+            url: entry.link,
             sentiment: 'neutral',
             impact: 'low',
             relevantAssets: [],
-            timestamp: new Date(article.publishedAt || Date.now()),
-            summary: article.description || article.title || '',
+            timestamp: entry.publishedAt,
+            summary: entry.description || entry.title,
           })
         }
+        sourcesOk++
+      } catch (error: any) {
+        this.logger.warn(`News feed ${feed.name} unavailable: ${error?.message || error}`)
       }
-    } catch (error: any) {
-      // API unavailable - that's OK, will use mock data
-      const status = error?.response?.status || 'unknown'
-      this.logger.info(`ℹ️ NewsAPI unavailable (${status}), using mock data`)
     }
 
-    // Add mock news for testing (remove in production if desired)
-    if (newsItems.length === 0) {
-      newsItems.push(
-        {
-          id: `news-mock-${Date.now()}`,
-          title: 'Bitcoin Hits New All-Time High Amid Institutional Adoption',
-          source: 'CoinTelegraph',
-          url: 'https://cointelegraph.com',
-          sentiment: 'positive',
-          impact: 'high',
-          relevantAssets: ['BTC', 'ETH'],
-          timestamp: new Date(),
-          summary: 'Bitcoin surges on institutional adoption news',
-        },
-        {
-          id: `news-mock-${Date.now() + 1}`,
-          title: 'Ethereum Technical Analysis Shows Bullish Breakout',
-          source: 'CryptoBreifing',
-          url: 'https://cryptobriefing.com',
-          sentiment: 'positive',
-          impact: 'medium',
-          relevantAssets: ['ETH'],
-          timestamp: new Date(),
-          summary: 'ETH technical indicators suggest upward movement',
-        },
-        {
-          id: `news-mock-${Date.now() + 2}`,
-          title: 'Regulatory Uncertainty Impacts Market',
-          source: 'Decrypt',
-          url: 'https://decrypt.co',
-          sentiment: 'negative',
-          impact: 'medium',
-          relevantAssets: ['BTC', 'ETH', 'ADA'],
-          timestamp: new Date(),
-          summary: 'New regulations could impact crypto markets',
+    // NewsAPI needs a key; only call it when one is configured. The key goes in a
+    // header, not the URL, so it never appears in request logs.
+    const apiKey = process.env.NEWS_API_KEY
+    if (apiKey) {
+      sourcesTried++
+      try {
+        const response = await this.get(NEWS_API_URL, { 'X-Api-Key': apiKey }, 1)
+        for (const article of Array.isArray(response?.articles) ? response.articles : []) {
+          const timestamp = new Date(article.publishedAt)
+          if (!article.title || !article.url || Number.isNaN(timestamp.getTime())) continue
+
+          items.push({
+            id: article.url,
+            title: article.title,
+            source: article.source?.name || 'NewsAPI',
+            url: article.url,
+            sentiment: 'neutral',
+            impact: 'low',
+            relevantAssets: [],
+            timestamp,
+            summary: article.description || article.title,
+          })
         }
-      )
+        sourcesOk++
+      } catch (error: any) {
+        this.logger.warn(`NewsAPI unavailable: ${error?.message || error}`)
+      }
     }
 
-    return newsItems
+    return { items, sourcesTried, sourcesOk }
   }
 
   private analyzeSentiment(text: string): 'positive' | 'negative' | 'neutral' {
-    const lower = text.toLowerCase()
-
-    const positiveCount = this.keywordsPositive.filter((k) => lower.includes(k)).length
-    const negativeCount = this.keywordsNegative.filter((k) => lower.includes(k)).length
+    const positiveCount = findTerms(text, this.keywordsPositive).length
+    const negativeCount = findTerms(text, this.keywordsNegative).length
 
     if (positiveCount > negativeCount) return 'positive'
     if (negativeCount > positiveCount) return 'negative'
@@ -203,25 +248,15 @@ class NewsMonitor extends BaseAgent {
   }
 
   private calculateImpact(text: string, sentiment: string): 'low' | 'medium' | 'high' | 'critical' {
-    const lower = text.toLowerCase()
+    const has = (...terms: string[]) => terms.some((term) => containsTerm(text, term))
 
     // Critical keywords
-    if (
-      lower.includes('hack') ||
-      lower.includes('exploit') ||
-      lower.includes('approval') ||
-      lower.includes('partnership with')
-    ) {
+    if (has('hack', 'exploit', 'approval', 'partnership with')) {
       return 'critical'
     }
 
     // High impact keywords
-    if (
-      lower.includes('regulation') ||
-      lower.includes('sec') ||
-      lower.includes('launch') ||
-      lower.includes('upgrade')
-    ) {
+    if (has('regulation', 'sec', 'launch', 'upgrade')) {
       return 'high'
     }
 
@@ -234,10 +269,7 @@ class NewsMonitor extends BaseAgent {
   }
 
   private detectAssets(text: string): string[] {
-    const assets = ['BTC', 'ETH', 'ADA', 'XRP', 'SOL', 'DOT']
-    const detected: string[] = []
-
-    const lower = text.toLowerCase()
+    const tickers = ['BTC', 'ETH', 'ADA', 'XRP', 'SOL', 'DOT']
     const assetNames: Record<string, string> = {
       bitcoin: 'BTC',
       ethereum: 'ETH',
@@ -246,19 +278,19 @@ class NewsMonitor extends BaseAgent {
       solana: 'SOL',
       polkadot: 'DOT',
     }
-
-    for (const [name, symbol] of Object.entries(assetNames)) {
-      if (lower.includes(name)) {
-        detected.push(symbol)
-      }
+    const detected: string[] = []
+    const add = (symbol: string) => {
+      if (!detected.includes(symbol)) detected.push(symbol)
     }
 
-    for (const asset of assets) {
-      if (lower.includes(asset.toLowerCase())) {
-        if (!detected.includes(asset)) {
-          detected.push(asset)
-        }
-      }
+    for (const [name, symbol] of Object.entries(assetNames)) {
+      if (containsTerm(text, name)) add(symbol)
+    }
+
+    // Tickers are matched as upper-case whole words so "ada" in "Canada" or "sol"
+    // in "solution" doesn't count.
+    for (const ticker of tickers) {
+      if (containsTerm(text, ticker, { caseSensitive: true, inflect: false })) add(ticker)
     }
 
     return detected

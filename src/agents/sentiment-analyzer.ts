@@ -1,4 +1,6 @@
 import { BaseAgent, AgentConfig } from '../base-agent'
+import { parseRss } from '../services/rss'
+import { containsTerm, findTerms } from '../services/text-match'
 
 interface SentimentData {
   source: string
@@ -87,7 +89,8 @@ export class SentimentAnalyzer extends BaseAgent {
     'fear-greed': 0.5,
   }
 
-  // Matched as word prefixes, so "surge" also matches "surges" and "surged".
+  // Matched as whole words (plural/past endings allowed, so "surge" also matches
+  // "surges" and "surged"); forms like "rallies" are listed explicitly.
   private bullishKeywords = [
     'bullish',
     'breakout',
@@ -95,6 +98,8 @@ export class SentimentAnalyzer extends BaseAgent {
     'pump',
     'surge',
     'rally',
+    'rallies',
+    'rallied',
     'partnership',
     'adoption',
     'gains',
@@ -247,7 +252,11 @@ export class SentimentAnalyzer extends BaseAgent {
       NEWS_FEEDS.map(async (feed) => {
         try {
           const xml = await this.get<string>(feed.url, { 'User-Agent': 'Mozilla/5.0' }, 1)
-          return this.parseRss(typeof xml === 'string' ? xml : '')
+          return parseRss(typeof xml === 'string' ? xml : '').map((item) => ({
+            title: item.title,
+            text: `${item.title}. ${item.description}`,
+            publishedAt: item.publishedAt,
+          }))
         } catch (error: any) {
           this.logger.warn(`News feed ${feed.name} unavailable: ${error?.message || error}`)
           return []
@@ -257,42 +266,6 @@ export class SentimentAnalyzer extends BaseAgent {
 
     const cutoff = Date.now() - NEWS_MAX_AGE_MS
     return results.flat().filter((h) => h.publishedAt.getTime() >= cutoff)
-  }
-
-  /** Minimal RSS 2.0 item extraction; avoids adding an XML dependency. */
-  private parseRss(xml: string): NewsHeadline[] {
-    const headlines: NewsHeadline[] = []
-    const items = xml.match(/<item[\s>][\s\S]*?<\/item>/g) || []
-
-    for (const item of items) {
-      const title = this.cleanText(this.extractTag(item, 'title'))
-      const description = this.cleanText(this.extractTag(item, 'description'))
-      const pubDate = new Date(this.extractTag(item, 'pubDate'))
-
-      if (!title || Number.isNaN(pubDate.getTime())) continue
-
-      headlines.push({ title, text: `${title}. ${description}`, publishedAt: pubDate })
-    }
-
-    return headlines
-  }
-
-  private extractTag(xml: string, tag: string): string {
-    const match = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`))
-    return match ? match[1] : ''
-  }
-
-  private cleanText(raw: string): string {
-    return raw
-      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#0?39;|&apos;/g, "'")
-      .replace(/\s+/g, ' ')
-      .trim()
   }
 
   /**
@@ -323,16 +296,12 @@ export class SentimentAnalyzer extends BaseAgent {
   }
 
   private mentionsSymbol(text: string, symbol: string): boolean {
-    if (new RegExp(`\\b${symbol}\\b`).test(text)) return true
-    const lower = text.toLowerCase()
-    return (this.assetNames[symbol] || []).some((name) =>
-      new RegExp(`\\b${name}\\b`).test(lower)
-    )
+    if (containsTerm(text, symbol, { caseSensitive: true, inflect: false })) return true
+    return (this.assetNames[symbol] || []).some((name) => containsTerm(text, name))
   }
 
   private matchKeywords(text: string, keywords: string[]): string[] {
-    const lower = text.toLowerCase()
-    return keywords.filter((k) => new RegExp(`\\b${k.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}`).test(lower))
+    return findTerms(text, keywords)
   }
 
   private toSentimentData(
