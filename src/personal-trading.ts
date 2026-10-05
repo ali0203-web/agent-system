@@ -21,6 +21,13 @@ async function startPersonalTrading() {
   logger.info(`💰 Capital: $${personalTradingConfig.capital}`)
   logger.info(`📊 Mode: ${personalTradingConfig.mode}`)
   logger.info(`🌐 Environment: ${personalTradingConfig.isTestnet ? '🧪 TESTNET (FAKE MONEY)' : '🚀 MAINNET (REAL MONEY)'}`)
+  if (!personalTradingConfig.isTestnet) {
+    logger.warn(
+      personalTradingConfig.mainnetOrdersAllowed
+        ? '🚨 ALLOW_MAINNET_ORDERS=true: orders WILL be sent to MAINNET with real money'
+        : '🛑 Mainnet orders are blocked (ALLOW_MAINNET_ORDERS is not "true"): orders are simulated'
+    )
+  }
   logger.info(`🧪 Dry run: ${personalTradingConfig.isDryRun ? 'ON (orders are simulated, none sent)' : 'OFF (orders are sent to the exchange)'}`)
   logger.info(`⚖️  Max Risk Per Trade: ${(personalTradingConfig.maxRiskPerTrade * 100).toFixed(1)}%`)
   logger.info(`📈 Max Position Size: ${(personalTradingConfig.maxPositionSize * 100).toFixed(1)}%`)

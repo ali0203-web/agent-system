@@ -6,7 +6,7 @@
 import axios from 'axios'
 import crypto from 'crypto'
 import { Logger } from '../logger'
-import { isDryRun, parseDryRun } from '../dry-run'
+import { orderBlockReason, parseDryRun, mainnetOrdersAllowed } from '../dry-run'
 
 interface BinanceOrder {
   symbol: string
@@ -55,11 +55,18 @@ export class BinanceAPI {
     if (!recognized) {
       this.logger.warn(`⚠️ Unrecognised DRY_RUN value "${process.env.DRY_RUN}", treating as dry run`)
     }
-    this.logger.info(
-      dryRun
-        ? '🧪 DRY RUN is ON: orders will be simulated, none sent to Binance'
-        : `⚠️ LIVE ORDERS enabled on ${useTestnet ? 'TESTNET' : 'MAINNET (REAL MONEY)'}. Set DRY_RUN=true to block orders`
-    )
+    if (dryRun) {
+      this.logger.info('🧪 DRY RUN is ON: orders will be simulated, none sent to Binance')
+    } else if (!useTestnet && !mainnetOrdersAllowed()) {
+      this.logger.warn(
+        '🛑 MAINNET selected but ALLOW_MAINNET_ORDERS is not "true": orders will be simulated, none sent. ' +
+          'Set ALLOW_MAINNET_ORDERS=true to trade real money.'
+      )
+    } else {
+      this.logger.info(
+        `⚠️ LIVE ORDERS enabled on ${useTestnet ? 'TESTNET' : 'MAINNET (REAL MONEY)'}. Set DRY_RUN=true to block orders`
+      )
+    }
   }
 
   /** Orders simulated while DRY_RUN was on (newest last), for inspection and tests. */
@@ -78,9 +85,11 @@ export class BinanceAPI {
    * Place a real order on Binance
    */
   async placeOrder(order: BinanceOrder): Promise<BinanceOrderResult | null> {
-    // Dry run: never sign or send. Return a clearly fake order (negative id,
-    // status DRY_RUN, simulated: true) so callers can run their logic end to end.
-    if (isDryRun()) {
+    // Dry run, or mainnet without ALLOW_MAINNET_ORDERS: never sign or send. Return
+    // a clearly fake order (negative id, status DRY_RUN, simulated: true) so callers
+    // can run their logic end to end.
+    const blocked = orderBlockReason(this.useTestnet)
+    if (blocked) {
       const simulated: BinanceOrderResult = {
         orderId: this.nextSimulatedOrderId--,
         symbol: order.symbol,
@@ -93,8 +102,10 @@ export class BinanceAPI {
       }
       this.dryRunOrders.push(simulated)
       if (this.dryRunOrders.length > 500) this.dryRunOrders.shift()
+      const why =
+        blocked === 'dry-run' ? '🧪 DRY RUN' : '🛑 MAINNET ORDERS NOT ALLOWED (ALLOW_MAINNET_ORDERS != true)'
       this.logger.info(
-        `🧪 DRY RUN: would place ${order.side} ${order.quantity} ${order.symbol} @ ${order.price} (not sent)`
+        `${why}: would place ${order.side} ${order.quantity} ${order.symbol} @ ${order.price} (not sent)`
       )
       return simulated
     }
@@ -181,16 +192,18 @@ export class BinanceAPI {
    * Cancel an order
    */
   async cancelOrder(symbol: string, orderId: number): Promise<boolean> {
-    // Dry run: simulated orders (negative ids) were never sent, so "cancelling"
+    // Blocked (dry run / mainnet gate): simulated orders (negative ids) were never sent, so "cancelling"
     // them succeeds locally. A real order id is NOT cancelled: dry run makes no
     // state-changing calls, and reporting success would be a lie.
-    if (isDryRun()) {
+    const blocked = orderBlockReason(this.useTestnet)
+    if (blocked) {
+      const why = blocked === 'dry-run' ? '🧪 DRY RUN' : '🛑 MAINNET ORDERS NOT ALLOWED'
       if (orderId < 0) {
-        this.logger.info(`🧪 DRY RUN: simulated order ${orderId} cancelled locally`)
+        this.logger.info(`${why}: simulated order ${orderId} cancelled locally`)
         return true
       }
       this.logger.warn(
-        `🧪 DRY RUN: real order ${orderId} on ${symbol} was NOT cancelled (no exchange changes in dry run)`
+        `${why}: real order ${orderId} on ${symbol} was NOT cancelled (no exchange changes while orders are blocked)`
       )
       return false
     }

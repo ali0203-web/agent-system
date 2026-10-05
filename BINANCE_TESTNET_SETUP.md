@@ -158,3 +158,14 @@ are tagged as simulated. Cancelling a *real* order is also blocked in dry run.
 The flag is read every time an order is placed, so it takes effect without a restart,
 but set it **before** starting the process for the startup banner to be accurate.
 Use it when running against mainnet until you have checked the bots' behaviour.
+
+## Mainnet safety gate (`ALLOW_MAINNET_ORDERS`)
+
+Orders against **mainnet** (`USE_TESTNET=false`, real money) are only sent when
+`ALLOW_MAINNET_ORDERS=true`. Otherwise they are simulated exactly like a dry run, with a
+`🛑 MAINNET ORDERS NOT ALLOWED` log line, and a warning is printed at startup.
+
+- Only the exact value `true` (any letter case) opens the gate. Unset, `1`, `yes` or a typo keep it closed.
+- `DRY_RUN=true` still wins: with both set, orders are simulated.
+- Testnet is not affected by this setting.
+- Like dry run, cancelling a real order is also blocked while the gate is closed.

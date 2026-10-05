@@ -6,7 +6,7 @@
 
 import * as dotenv from 'dotenv'
 import * as path from 'path'
-import { isDryRun } from './dry-run'
+import { isDryRun, mainnetOrdersAllowed } from './dry-run'
 
 // Load .env.local if it exists (development), otherwise use environment variables (production)
 const envPath = path.resolve(process.cwd(), '.env.local')
@@ -47,6 +47,8 @@ export const personalTradingConfig = {
   // DRY_RUN=true blocks all order placement/cancellation (enforced in BinanceAPI, read at call time).
   // This value is a snapshot for display only; .env.local has been loaded above by this point.
   isDryRun: isDryRun(),
+  // Mainnet orders are simulated unless ALLOW_MAINNET_ORDERS=true (see src/dry-run.ts)
+  mainnetOrdersAllowed: mainnetOrdersAllowed(),
   
   // Agent Configuration
   agents: {
