@@ -85341,3 +85341,37 @@
   "stack": "error: database \"agents\" does not exist\n    at /Users/aliasgarfatepurwala/agent-system/node_modules/pg-pool/index.js:45:11\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at Database.insert (/Users/aliasgarfatepurwala/agent-system/src/database.ts:169:22)\n    at ArbitrageBot.saveResult (/Users/aliasgarfatepurwala/agent-system/src/base-agent.ts:209:7)\n    at ArbitrageBot.run (/Users/aliasgarfatepurwala/agent-system/src/base-agent.ts:117:7)\n    at Orchestrator.runAgent (/Users/aliasgarfatepurwala/agent-system/src/orchestrator.ts:397:22)\n    at Job.job (/Users/aliasgarfatepurwala/agent-system/src/orchestrator.ts:449:9)"
 }
 [2026-09-28 19:07:00] [INFO] [Orchestrator] ✅ arbitrage-bot completed in 707ms
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] [CRITICAL] 🚨 Agent Failed: Agent test-bot failed: Connection timeout
+[2026-10-03 13:17:16] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:16] [INFO] [AlertingService] [CRITICAL] ⚠️ High Error Rate: High error rate on test-bot: 5 failures
+[2026-10-03 13:17:16] [INFO] [AlertingService] [WARNING] ⚠️ Portfolio Risk: Portfolio risk HIGH: exposure 95%
+[2026-10-03 13:17:16] [INFO] [AlertingService] [CRITICAL] 🚨 Agent Failed: Agent bot1 failed: Error 1
+[2026-10-03 13:17:16] [INFO] [AlertingService] [INFO] 🎯 High Confidence Signal: High confidence signal (90%) from bot2
+[2026-10-03 13:17:16] [INFO] [AlertingService] [CRITICAL] 🚨 Agent Failed: Agent test-bot failed: Error
+[2026-10-03 13:17:16] [INFO] [AlertingService] [CRITICAL] 🚨 Agent Failed: Agent momentum-trader failed: Connection refused
+[2026-10-03 13:17:16] [INFO] [AlertingService] [WARNING] ⚠️ Portfolio Risk: Portfolio risk CRITICAL: exposure 110%
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] Configured 7 alert rules
+[2026-10-03 13:17:45] [INFO] [AlertingService] [CRITICAL] 🚨 Agent Failed: Agent test-bot failed: Connection timeout
+[2026-10-03 13:17:45] [INFO] [AlertingService] [WARNING] ⚠️ Portfolio Risk: Portfolio risk HIGH: exposure 95%
+[2026-10-03 13:17:45] [INFO] [AlertingService] [CRITICAL] ⚠️ High Error Rate: High error rate on test-bot: 5 failures
+[2026-10-03 13:17:45] [INFO] [AlertingService] [CRITICAL] 🚨 Agent Failed: Agent test-bot failed: Error
+[2026-10-03 13:17:45] [INFO] [AlertingService] [CRITICAL] 🚨 Agent Failed: Agent bot1 failed: Error 1
+[2026-10-03 13:17:45] [INFO] [AlertingService] [INFO] 🎯 High Confidence Signal: High confidence signal (90%) from bot2
+[2026-10-03 13:17:45] [INFO] [AlertingService] [CRITICAL] 🚨 Agent Failed: Agent momentum-trader failed: Connection refused
+[2026-10-03 13:17:45] [INFO] [AlertingService] [WARNING] ⚠️ Portfolio Risk: Portfolio risk CRITICAL: exposure 110%
