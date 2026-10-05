@@ -35,6 +35,44 @@ export async function askClaude(
   return { text, usage: response.usage };
 }
 
+/**
+ * Sends a prompt and gets back JSON that is constrained to `schema`
+ * (structured outputs), parsed into T. Callers should still validate the
+ * parsed value before trusting it.
+ */
+export async function askClaudeJSON<T>(
+  prompt: string,
+  schema: Record<string, unknown>,
+  options: AskClaudeOptions & { effort?: "low" | "medium" | "high" } = {},
+): Promise<T> {
+  const response = await client.messages.create({
+    model: options.model ?? DEFAULT_MODEL,
+    max_tokens: options.maxTokens ?? 4096,
+    system: options.system,
+    output_config: {
+      effort: options.effort ?? "low",
+      format: { type: "json_schema", schema },
+    },
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  if (response.stop_reason === "refusal" || response.stop_reason === "max_tokens") {
+    throw new Error(`Claude response not usable (stop_reason: ${response.stop_reason})`);
+  }
+
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+
+  return JSON.parse(text) as T;
+}
+
+/** True when an API credential is available in the environment. */
+export function claudeConfigured(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+}
+
 async function main() {
   try {
     const { text, usage } = await askClaude("What is the capital of France?");
