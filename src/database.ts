@@ -4,6 +4,118 @@ import { Logger } from './logger'
 
 const logger = new Logger('Database')
 
+/**
+ * Circuit breaker shared by every Database instance (each agent creates its
+ * own). When Postgres is unreachable, repeated writes would each block on the
+ * connection timeout and flood the log with stack traces. After a few
+ * connection failures we pause DB writes for a cooldown, log once, and skip
+ * writes cheaply until the next attempt.
+ */
+const CIRCUIT_FAILURE_THRESHOLD = 3
+const CIRCUIT_COOLDOWN_MS = 60_000
+
+export class DbUnavailableError extends Error {
+  constructor() {
+    super('Database unavailable (circuit open)')
+    this.name = 'DbUnavailableError'
+  }
+}
+
+/** True for "can't reach / lost the server" errors, not for bad SQL etc. */
+export function isConnectionError(error: any): boolean {
+  const code = error?.code
+  if (
+    typeof code === 'string' &&
+    (['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE'].includes(code) ||
+      code.startsWith('08') || // PostgreSQL connection exception class
+      code === '57P01' || // admin shutdown
+      code === '57P03') // cannot connect now
+  ) {
+    return true
+  }
+  if (Array.isArray(error?.errors) && error.errors.length > 0) {
+    return error.errors.some(isConnectionError) // AggregateError from multi-address connects
+  }
+  return /connection terminated|connection timeout|timeout exceeded when trying to connect/i.test(
+    String(error?.message ?? '')
+  )
+}
+
+const circuit = {
+  failures: 0,
+  openUntil: 0,
+  skipped: 0,
+
+  guard(): void {
+    if (this.openUntil > Date.now()) {
+      this.skipped++
+      throw new DbUnavailableError()
+    }
+  },
+
+  success(): void {
+    if (this.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+      logger.info('✅ Database reachable again, resuming writes')
+    }
+    this.failures = 0
+    this.openUntil = 0
+  },
+
+  failure(error: any): void {
+    this.failures++
+    if (this.failures === 1) {
+      logger.warn(`⚠️ Database write failed (${error?.code ?? error?.message ?? 'unknown error'})`)
+    }
+    if (this.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+      const skipped = this.skipped
+      this.skipped = 0
+      this.openUntil = Date.now() + CIRCUIT_COOLDOWN_MS
+      logger.warn(
+        `⚠️ Database unreachable after ${this.failures} consecutive failures; ` +
+          `pausing writes for ${CIRCUIT_COOLDOWN_MS / 1000}s` +
+          (skipped > 0 ? ` (${skipped} writes skipped since last check)` : '') +
+          `. Agents keep running; events and results are buffered (up to ${OUTBOX_MAX_ITEMS}) and replayed on recovery.`
+      )
+    }
+  },
+}
+
+/**
+ * Outbox: while the database is unreachable, event / agent-result writes are
+ * kept in memory (bounded) and replayed, oldest first, once a write succeeds
+ * again. Replayed rows keep their original created_at. The buffer is lost if
+ * the process exits, and a write that failed mid-flight could in rare cases be
+ * stored twice on replay.
+ */
+const OUTBOX_MAX_ITEMS = 1000
+const OUTBOX_MAX_AGE_MS = 60 * 60 * 1000
+const BUFFERABLE_TABLES = new Set(['events', 'agent_results']) // both have created_at
+
+interface BufferedWrite {
+  table: string
+  data: Record<string, any>
+  queuedAt: number
+}
+
+const outbox = {
+  items: [] as BufferedWrite[],
+  dropped: 0,
+  draining: false,
+
+  add(table: string, data: Record<string, any>): void {
+    this.items.push({ table, data, queuedAt: Date.now() })
+    while (this.items.length > OUTBOX_MAX_ITEMS) {
+      this.items.shift()
+      this.dropped++
+    }
+  },
+}
+
+/** Snapshot of the replay buffer, for monitoring and tests. */
+export function dbOutboxStats(): { buffered: number; dropped: number; draining: boolean } {
+  return { buffered: outbox.items.length, dropped: outbox.dropped, draining: outbox.draining }
+}
+
 export class Database {
   private pgPool: Pool
   private redisClient: RedisClientType
@@ -152,25 +264,107 @@ export class Database {
   }
 
   /**
-   * Insert data
+   * Insert data. With `bufferOnFailure` (events / agent_results only), a write
+   * that can't reach the database is queued for replay instead of throwing.
    */
-  async insert(table: string, data: Record<string, any>): Promise<any> {
-    try {
-      const columns = Object.keys(data)
-      const values = Object.values(data)
-      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
+  async insert(
+    table: string,
+    data: Record<string, any>,
+    options: { bufferOnFailure?: boolean } = {}
+  ): Promise<any> {
+    const canBuffer = Boolean(options.bufferOnFailure) && BUFFERABLE_TABLES.has(table)
 
-      const query = `
+    try {
+      circuit.guard()
+    } catch (error) {
+      if (canBuffer) {
+        outbox.add(table, data)
+        return null
+      }
+      throw error
+    }
+
+    try {
+      const row = await this.runInsert(table, data)
+      circuit.success()
+      if (outbox.items.length > 0) {
+        void this.drainOutbox().catch((e) => logger.warn(`Outbox replay error: ${e?.message ?? e}`))
+      }
+      return row
+    } catch (error) {
+      if (isConnectionError(error)) {
+        circuit.failure(error) // logs once / on open; avoids a stack dump per write
+        if (canBuffer) {
+          outbox.add(table, data)
+          return null
+        }
+      } else {
+        logger.error(`Insert into ${table} failed`, error)
+      }
+      throw error
+    }
+  }
+
+  private async runInsert(table: string, data: Record<string, any>): Promise<any> {
+    const columns = Object.keys(data)
+    const values = Object.values(data)
+    const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
+
+    const query = `
         INSERT INTO ${table} (${columns.join(', ')})
         VALUES (${placeholders})
         RETURNING *
       `
 
-      const result = await this.pgPool.query(query, values)
-      return result.rows[0]
-    } catch (error) {
-      logger.error(`Insert into ${table} failed`, error)
-      throw error
+    const result = await this.pgPool.query(query, values)
+    return result.rows[0]
+  }
+
+  /** Replay buffered writes oldest-first; stops (and keeps the rest) if the DB drops again. */
+  private async drainOutbox(): Promise<void> {
+    if (outbox.draining || outbox.items.length === 0) return
+    outbox.draining = true
+    let replayed = 0
+
+    try {
+      while (outbox.items.length > 0) {
+        const item = outbox.items[0]
+
+        if (Date.now() - item.queuedAt > OUTBOX_MAX_AGE_MS) {
+          outbox.items.shift()
+          outbox.dropped++
+          continue
+        }
+
+        try {
+          await this.runInsert(item.table, {
+            created_at: new Date(item.queuedAt).toISOString(),
+            ...item.data,
+          })
+          outbox.items.shift()
+          replayed++
+        } catch (error) {
+          if (isConnectionError(error)) {
+            circuit.failure(error)
+            break // keep this item and the rest for the next recovery
+          }
+          // A write the database rejects will never succeed: drop it
+          outbox.items.shift()
+          outbox.dropped++
+          logger.warn(`Dropping buffered ${item.table} write: ${(error as Error)?.message ?? error}`)
+        }
+      }
+    } finally {
+      outbox.draining = false
+    }
+
+    if (replayed > 0 || outbox.dropped > 0) {
+      logger.info(
+        `📤 Replayed ${replayed} buffered writes` +
+          (outbox.dropped > 0 ? `, ${outbox.dropped} dropped (overflow/expired/rejected)` : '') +
+          `, ${outbox.items.length} still buffered`
+      )
+      outbox.dropped = 0
     }
   }
 
@@ -195,13 +389,20 @@ export class Database {
    */
   async publishEvent(eventName: string, data: any, emittedBy?: string): Promise<void> {
     try {
-      await this.insert('events', {
-        event_name: eventName,
-        data,
-        emitted_by: emittedBy,
-      })
+      await this.insert(
+        'events',
+        {
+          event_name: eventName,
+          data,
+          emitted_by: emittedBy,
+        },
+        { bufferOnFailure: true }
+      )
     } catch (error) {
-      logger.error('Publish event failed', error)
+      // Connection problems are already reported by the circuit breaker
+      if (!(error instanceof DbUnavailableError) && !isConnectionError(error)) {
+        logger.error('Publish event failed', error)
+      }
     }
   }
 

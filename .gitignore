@@ -1,2 +1,5 @@
 .vercel
 .env.local
+data/
+logs/
+personal-trading.log

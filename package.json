@@ -7,6 +7,8 @@
     "dev": "tsx watch src/personal-trading.ts",
     "dev:single": "tsx watch src/index.ts",
     "dev:server": "tsx watch src/server.ts",
+    "dev:dry": "DRY_RUN=true tsx watch src/personal-trading.ts",
+    "grid:dry": "tsx src/grid-dry-run.ts",
     "start": "node dist/index.js",
     "start:server": "node dist/server.js",
     "start:orchestrator": "npm run build && node dist/server.js",
@@ -32,6 +34,7 @@
     "test:agent15": "tsx src/test-agent-15.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "axios": "^1.6.0",
     "dotenv": "^16.0.0",
     "express": "^4.18.0",

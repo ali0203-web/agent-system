@@ -2,7 +2,8 @@ import { EventEmitter } from 'events'
 import { v4 as uuidv4 } from 'uuid'
 import axios from 'axios'
 import { Logger } from './logger'
-import { Database } from './database'
+import { Database, DbUnavailableError, isConnectionError } from './database'
+import { signalBus } from './signal-bus'
 
 export interface AgentConfig {
   name: string
@@ -177,13 +178,21 @@ export abstract class BaseAgent extends EventEmitter {
   async publishEvent(eventName: string, data: any): Promise<void> {
     this.logger.debug(`Publishing event: ${eventName}`)
 
+    // Record in the in-memory signal bus first so consumers (e.g. the Signal
+    // Aggregator) still see it when the database is unavailable.
+    signalBus.record(this.config.name, eventName, data)
+
     try {
       await this.db.publishEvent(eventName, data)
-      this.emit('event-published', { eventName, data })
     } catch (error) {
-      this.logger.error(`Failed to publish event ${eventName}`, error)
-      throw error
+      // Persisting the event is best-effort: a database problem must not abort
+      // the agent's run (the signal bus above already has the event).
+      if (!(error instanceof DbUnavailableError) && !isConnectionError(error)) {
+        this.logger.warn(`Failed to persist event ${eventName}: ${(error as Error)?.message ?? error}`)
+      }
     }
+
+    this.emit('event-published', { eventName, data })
   }
 
   /**
@@ -214,9 +223,11 @@ export abstract class BaseAgent extends EventEmitter {
         error: result.error,
         executed_at: result.executedAt.toISOString(),
         execution_time: result.executionTime,
-      })
+      }, { bufferOnFailure: true })
     } catch (error) {
-      this.logger.error('Failed to save result to database', error)
+      if (!(error instanceof DbUnavailableError) && !isConnectionError(error)) {
+        this.logger.error('Failed to save result to database', error)
+      }
     }
   }
 
