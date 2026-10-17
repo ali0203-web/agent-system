@@ -3,5 +3,3 @@
 data/
 logs/
 personal-trading.log
-node_modules/
-.cto-toolkit/
